@@ -1,0 +1,18 @@
+{
+  "module": "M02",
+  "name": "JD Parser & Coverage Planner",
+  "spec": "plan_in_depth/M02_JD_Parser.md",
+  "repo": "https://github.com/MNEMOS-PREP/JD_Parser",
+  "owner": "E3",
+  "phase": "1",
+  "ports": {
+    "backend": 8102,
+    "frontend": 5202
+  },
+  "core": {
+    "repo": "https://github.com/MNEMOS-PREP/Platform_Core",
+    "version": "v0.3.0"
+  },
+  "depends_on": [{"module": "M04"}],
+  "feeds": []
+}
