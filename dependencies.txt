@@ -1,0 +1,167 @@
+===============================================================================
+  M02 — JD PARSER & COVERAGE PLANNER · WHAT THIS MODULE NEEDS
+  Repo: https://github.com/MNEMOS-PREP/jd-parser-coverage
+  Spec: plan_in_depth/M02_JD_Parser.md
+  The machine-readable version is module.json. This is the one for humans.
+  Last updated: 2026-08-18
+===============================================================================
+
+THE SHORT VERSION
+-------------------------------------------------------------------------------
+Clone it, install it, run it. Nothing below is required to start, and nothing
+is marked required: true - deliberately. Marking an upstream required turns
+someone else's outage into yours.
+
+A missing upstream narrows the SCOPE of what M02 can say. It never lowers the
+quality of what it does say, and it is never silent: GET /v1/deps names each
+one and what it costs, and every coverage response carries `degraded`.
+
+
+UPSTREAM
+-------------------------------------------------------------------------------
+  M04  Skill Graph & MNEMOS Memory          http://127.0.0.1:8104
+       Repo: https://github.com/MNEMOS-PREP/Memory
+       Health: GET :8104/health
+
+       Needs it for:  three separate things, and they fail separately.
+                      1. GET /v1/concepts       - the ontology a JD is scanned
+                                                  against. Decides which
+                                                  requirements we find at all.
+                      2. POST /v1/concepts/resolve - label -> concept_id, so a
+                                                  requirement is testable.
+                      3. GET /v1/candidates/{id}/mastery - the gap. Without it
+                                                  there is no coverage score.
+
+       Without it:    the scan falls back to a five-concept offline lexicon and
+                      the resolutions to a five-entry table. Both are usable
+                      and both are LABELLED: every response carries
+                      `scanned_against` and a per-label `concept_source` of
+                      "m04" or "offline_fallback". Nothing that came from the
+                      offline table is ever presented as ontology.
+
+                      Coverage returns `coverage_score: null`, every
+                      requirement in state `not_measured`, and `degraded`
+                      naming M04. It does NOT return 0.0 - see below.
+
+
+THE RULE THIS MODULE KEEPS BREAKING, AND WHY IT MATTERS
+-------------------------------------------------------------------------------
+Rule 2: a missing input narrows the SCOPE of what we show, never the quality,
+and never silently. Two ways this module can violate it, both fixed and both
+guarded by a test:
+
+  A zero that means "we did not ask."   The first version returned
+  coverage_score 0.0 with every requirement in `missing` and gap_severity 1.0
+  when M04 was unreachable. That is a confident statement that the student
+  meets none of this job's requirements, produced by a service nobody asked.
+  Now: null, `not_measured`, and severity 0.6 - which reads as "probe this",
+  not "you failed this". (test_coverage_is_null_not_zero_when_m04_is_down)
+
+  A guess that looks like a fact.   A concept_id is a licence for M05 to build
+  questions on and for M13 to score against. An id this module guessed offline
+  must not arrive downstream indistinguishable from one M04 confirmed.
+  Now: `concept_source` per label. (test_parse_marks_offline_provenance)
+
+The mirror of the first one is just as wrong and is also fixed: a JD with no
+mappable requirements used to return coverage_score 1.0 - fabricated full
+coverage. Unmappable requirements are now reported as `unmeasurable` (spec
+EC-2.8) and sit outside the score entirely.
+
+
+DECLARED BUT NOT YET CONSUMED - deliberately absent from module.json
+-------------------------------------------------------------------------------
+The spec header names two more upstreams. Neither is declared, because a
+declared dependency produces a degradation banner, and a banner for a feature
+that does not exist is the same lie in the other direction. Add the entry in
+the same commit that adds the call.
+
+  M01  Resume Ingestion    resume claims, to weight a requirement by what the
+                           student has actually done rather than only by what
+                           the JD emphasises.
+                           Repo: .../resume-ingestion
+
+  M15  Company Guider      spec §6.7 company enrichment: real observed round
+                           structure and difficulty overriding archetype
+                           defaults. Purely additive - "good problem solving"
+                           becomes "2 medium DP, 1 graph, 1 SQL".
+                           Repo: .../Company_Guider
+
+
+WHAT THIS MODULE FEEDS (downstream)
+-------------------------------------------------------------------------------
+These consume M02. They are NOT dependencies - M02 never calls them - but if
+you change a response shape, these are who you break.
+
+  MODULE  WHAT THEY TAKE FROM US
+  ------  ----------------------------------------------------------------
+  M05     requirement -> concept mapping, to select questions that probe a
+          named requirement rather than a topic
+  M06     the coverage plan: question budget per requirement, round mix
+  M15     role archetype and coverage plan, for drive-variant matching
+  M16     the gap list, as the study plan's input
+  M19     the coverage ledger, for the post-session coverage report
+
+  NOTE: M15's manifest already declares M02 and names "role archetype" as what
+  it takes. There is no archetype in this code yet (spec §6.3) and no
+  /v1/archetypes endpoint, so that feature is still on M15's fallback path.
+  It is the highest-value next thing to build here.
+
+
+SHARED PLATFORM CODE  —  a versioned dependency, not a copy
+-------------------------------------------------------------------------------
+    https://github.com/MNEMOS-PREP/Platform_Core   (public)   pinned at v0.4.0
+
+    Backend    ai-core @ git+https://github.com/MNEMOS-PREP/Platform_Core@v0.4.0#subdirectory=python
+
+Supplies `ai_core.dependencies` - the probing, the `/v1/deps` shape, and the
+`DegradedFeature` payload this module attaches to every coverage response.
+
+**Pinned by tag on purpose.** Tracking `main` is how you get a surprise
+breakage on a Tuesday. Upgrading is deliberate: bump the tag, run the tests,
+commit the bump. Versions across the nineteen repos diverging is fine; they
+diverge on YOUR schedule.
+
+Platform_Core is public, so no SSH key or token is needed to install it. The
+module repos stay private.
+
+
+EXTERNAL DEPENDENCIES
+-------------------------------------------------------------------------------
+  Backend    pyproject.toml
+             fastapi · sqlmodel · uvicorn · pytest · httpx · ruff
+             Python >= 3.11
+
+  Frontend   none yet. Spec §8 specifies the screens; port 5202 is reserved.
+
+  Database   SQLite by default (zero setup). Set DATABASE_URL for Postgres;
+             master plan §20 specifies Postgres + pgvector for real use.
+
+  Keys       none. Nothing here calls a model yet - see required_keys.txt.
+
+
+RUNNING WITHOUT ANY OTHER MODULE
+-------------------------------------------------------------------------------
+    python -m venv Backend\.venv
+    Backend\.venv\Scripts\python -m pip install -e ".[dev]"
+    start_jd.bat                   API :8102
+    cd Backend && .venv\Scripts\python seed.py
+
+Everything works. GET /v1/deps reports M04 unavailable and says what that
+costs, which is the point: the API tells you what is missing rather than
+pretending.
+
+    start_all.bat                  the same, plus every sibling module repo
+
+`start_all.bat` reads the `depends_on` list in module.json, looks for each
+repo checked out beside this one (`..\Memory`), and launches the ones it finds
+into the SAME terminal window - so one control tab closes all of them.
+
+**The sibling folder name is derived from the LAST PATH SEGMENT of the repo
+URL in module.json.** The on-disk folder and the GitHub repo name have to
+agree or a module that is checked out and running is skipped in silence. This
+has now cost the platform three separate afternoons; check it when you add a
+dependency.
+
+A sibling that is not on disk is skipped silently, because that is the normal
+case and not an error. Running `start_jd.bat` and then `start_all.bat` is the
+fastest way to see degradation switch on and off.

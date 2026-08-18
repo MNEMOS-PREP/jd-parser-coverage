@@ -2,7 +2,7 @@
   "module": "M02",
   "name": "JD Parser & Coverage Planner",
   "spec": "plan_in_depth/M02_JD_Parser.md",
-  "repo": "https://github.com/MNEMOS-PREP/JD_Parser",
+  "repo": "https://github.com/MNEMOS-PREP/jd-parser-coverage",
   "owner": "E3",
   "phase": "1",
   "ports": {
@@ -11,8 +11,50 @@
   },
   "core": {
     "repo": "https://github.com/MNEMOS-PREP/Platform_Core",
-    "version": "v0.3.0"
+    "version": "v0.4.0"
   },
-  "depends_on": [{"module": "M04"}],
-  "feeds": []
+
+  "_comment_depends_on": [
+    "Nothing here is required to START. Every upstream is optional at runtime,",
+    "and its absence removes a FEATURE, never the endpoint and never silently.",
+    "`on_missing` is shown to a student: write a sentence they can act on.",
+    "A missing `base_url` is not a safe default - it silently disables the",
+    "upstream even when it IS running, so every entry carries one.",
+    "Override any base_url without editing this file: M04_BASE_URL=http://..."
+  ],
+  "depends_on": [
+    {
+      "module": "M04",
+      "name": "Skill Graph & MNEMOS Memory",
+      "repo": "https://github.com/MNEMOS-PREP/Memory",
+      "reason": "the concept ontology to scan a JD against, label resolution, and candidate mastery for the coverage gap",
+      "on_missing": "Your gaps against this JD — needs M04 Skill Graph. We still read the requirements out of the JD; we just can't say yet which of them you're weak on.",
+      "base_url": "http://127.0.0.1:8104",
+      "health_path": "/health",
+      "required": false
+    }
+  ],
+
+  "_comment_planned": [
+    "Spec §7 and the header also name M01 (resume claims, to weight a",
+    "requirement by what the student has actually done) and M15 (§6.7 company",
+    "enrichment - real round structure overriding archetype defaults).",
+    "Neither is consumed by this code yet, so neither is declared: a dependency",
+    "listed here produces a degradation banner, and a banner for a feature that",
+    "does not exist is the same lie in the other direction.",
+    "Add the entry in the same commit that adds the call."
+  ],
+
+  "_comment_feeds": [
+    "These consume M02. They are NOT dependencies - M02 never calls them - but",
+    "the RequirementSet and CoveragePlan shapes are what they read.",
+    "Additive changes are safe; renaming or removing a field breaks them."
+  ],
+  "feeds": [
+    { "module": "M05", "takes": "requirement -> concept mapping, to select questions that probe a requirement" },
+    { "module": "M06", "takes": "the coverage plan: question budget per requirement, round mix" },
+    { "module": "M15", "takes": "role archetype and coverage plan for drive-variant matching" },
+    { "module": "M16", "takes": "the gap list, as the study plan's input" },
+    { "module": "M19", "takes": "the coverage ledger, for the post-session coverage report" }
+  ]
 }
