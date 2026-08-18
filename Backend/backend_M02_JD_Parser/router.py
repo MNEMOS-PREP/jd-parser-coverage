@@ -281,6 +281,9 @@ def get_jd_coverage(jd_id: uuid.UUID, candidate_id: uuid.UUID, session: Session 
         "states": states,
         "mastery": mastery_by_label,
         "gap_severity": gap_severity,
+        # The ids themselves, so a caller can show WHICH concept a
+        # requirement was matched to alongside where that id came from.
+        "resolved_concepts": jd.resolved_concepts,
         "concept_source": jd.concept_source,
         "scanned_against": jd.scanned_against,
         "degraded": degraded,

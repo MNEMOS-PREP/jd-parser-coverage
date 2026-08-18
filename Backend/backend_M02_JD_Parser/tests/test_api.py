@@ -191,3 +191,28 @@ def test_deps_names_the_missing_module(client):
 def test_deps_reports_a_live_upstream(client, m04_mastery):
     m04_mastery({"measured": []})
     assert client.get("/v1/deps").json()[0]["available"] is True
+
+
+def test_coverage_carries_the_concept_ids_and_their_provenance(client):
+    """A caller has to be able to show WHICH concept a requirement matched and
+    WHERE that id came from. Both travel with the gap, not just the label."""
+    res_parse = client.post(
+        "/v1/jds/parse",
+        json={"company_name": "X", "role_title": "Y", "raw_text": "SQL and hashing."},
+    )
+    jd_id = res_parse.json()["id"]
+    cov = client.get(f"/v1/jds/{jd_id}/coverage/{uuid.uuid4()}").json()
+
+    assert cov["resolved_concepts"]["SQL"] == "concept:sql_basics"
+    assert cov["concept_source"]["SQL"] == "offline_fallback"
+    assert cov["scanned_against"] == "offline_lexicon"
+
+
+def test_status_reports_the_platform_registry(client):
+    """Not this module's opinion of itself - the shared registry's."""
+    res = client.get("/status")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["id"] == "M02"
+    assert body["implemented"] is True
+    assert body["reserved_port"] == 8102

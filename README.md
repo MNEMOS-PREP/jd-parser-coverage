@@ -5,14 +5,15 @@
 > requirements, the student's gap against them, and the question budget the
 > mock spends closing it.
 >
-> Spec: [plan_in_depth/M02_JD_Parser.md](plan_in_depth/M02_JD_Parser.md) · Ports: API `8102` ([PORTS.txt](PORTS.txt))
+> Spec: [plan_in_depth/M02_JD_Parser.md](plan_in_depth/M02_JD_Parser.md) · Ports: API `8102`, web `5202` ([PORTS.txt](PORTS.txt))
 
 ```bash
 git clone https://github.com/MNEMOS-PREP/jd-parser-coverage
 cd jd-parser-coverage
 python -m venv Backend/.venv && Backend/.venv/Scripts/python -m pip install -e ".[dev]"
-Backend/.venv/Scripts/python -m pytest       # 11 passed, no network, no API key
-start_jd.bat                                  # API on :8102
+Backend/.venv/Scripts/python -m pytest       # 13 passed, no network, no API key
+cd Frontend && npm install && cd ..
+start_jd.bat                                  # API :8102 · web :5202
 ```
 
 No API key needed, and **no model is called anywhere in this milestone.** The
@@ -94,6 +95,41 @@ direction — but it should be resolved before M05 or M06 writes against it.
 
 ---
 
+## The frontend
+
+Two screens on `:5202`, and the reason they are only two is that the backend
+fills only two. `src/api.ts` has one hook per endpoint and none without one —
+the same rule the router keeps, applied on the other side of the wire.
+
+**The coverage rows use `MasteryBar` from `@ai/core`, not a local component.**
+Spec §8 makes "not measured must look different from weak" a *fairness*
+property: a student with no session history has every requirement unmeasured,
+so if the two treatments ever collapse, the most common first-run state on the
+platform reads as a wall of failures. `@ai/core` holds the single definition of
+that distinction, and it enforces "a non-displayable state can never render a
+number" in code rather than in a comment. A nineteenth copy is how the promise
+stops being true in whichever repo falls behind while its own tests pass.
+
+Building this surfaced one thing worth fixing upstream: `MasteryValue.n_direct`
+was required, and M02 has no evidence count to put in it — it reads a coverage
+summary, not M04's ledger. Passing `0` rendered "tested 0×" under a strong bar,
+a fabricated fact produced by the type signature of the component built to
+prevent fabricated facts. Platform_Core v0.6.0 makes it optional.
+
+What the screens deliberately do **not** do:
+
+- **Invent an ordering.** With no `necessity` or `weight`, requirements are a
+  flat list and the page says so in an expandable note rather than implying a
+  priority the backend never sent.
+- **Pick a "biggest gap".** §2.3 highlights one. Every severity here is either
+  `0.6` (not measured) or `1 − mastery`, so a single highlighted gap would be an
+  artefact of list order.
+- **Render dead controls.** The company picker, role picker and campus-drive
+  chips are named on the page as not built. A greyed-out button that does
+  nothing reads as a broken product; a named gap reads as an unfinished one.
+
+---
+
 ## Layout
 
 ```
@@ -106,10 +142,16 @@ Backend/
     app.py                      FastAPI app, SQLite engine, /health
     router.py                   every endpoint, and the M04 client
     models.py                   JobDescription — the whole data model today
-    tests/                      11 tests, no socket opened
+    tests/                      13 tests, no socket opened
   seed.py                       two JDs, provenance-marked as seeded
+Frontend/
+  frontend_M02_JD_Parser/
+    src/api.ts                  one hook per endpoint, and none without one
+    src/types.ts                only fields the API actually sends
+    src/components/             ParsePage, JdPage, CoveragePanel, DepsPage
+    src/ui/                     shell, primitives, design tokens
 scripts/                        launcher engine (shared, identical across repos)
-start_jd.bat                    this module            (:8102)
+start_jd.bat                    this module            (:8102 · :5202)
 start_all.bat                   plus any sibling repo checked out next door
 ```
 
