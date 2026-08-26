@@ -32,7 +32,21 @@ class JobDescription(SQLModel, table=True):
     #: returning the first one's label to the second student would put the
     #: wrong company name on their coverage screen.
     content_sha256: str = Field(default="", index=True)
+    #: The flat list, kept because several callers read it. `requirements`
+    #: below is the one carrying §5's contract; this is the same labels without
+    #: the provenance, exactly as M01 keeps `parsed_skills` beside
+    #: `skill_mentions`.
     required_skills: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+
+    #: `Requirement` as serialised by extract.py: id, text, SPAN, concept ids,
+    #: measurability and where the id came from.
+    #:
+    #: The span is the point. Every other module holds one contract above the
+    #: rest — a fact points at the characters it came from — and M02 produced a
+    #: list of strings, so M05 could not cite the JD line a question came from
+    #: and a student could not check a requirement we claimed their posting
+    #: contained.
+    requirements: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
 
     #: skill_label -> concept_id. Only labels we have an id for; see
     #: `concept_source` for WHERE that id came from, which is not decoration:

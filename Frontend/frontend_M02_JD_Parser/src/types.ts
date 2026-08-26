@@ -16,6 +16,40 @@ export type ConceptSource = "m04" | "offline_fallback";
 /** Which ontology the JD was scanned against. */
 export type ScannedAgainst = "m04" | "offline_lexicon";
 
+/**
+ * Where in the JD a requirement is written. Offsets into `raw_text`.
+ *
+ * The platform's one contract above the others: a fact points at the
+ * characters it came from. `text` is verbatim, so a client can check the span
+ * still resolves rather than trusting the offsets.
+ */
+export interface SourceSpan {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/**
+ * One thing the posting asks for, and where it says so.
+ *
+ * A PARTIAL §5 `Requirement`. `kind`, `necessity`, `weight`, `measured_by` and
+ * `seniority_signal` are not here because nothing derives them yet — absent
+ * rather than defaulted, since a `necessity: "must"` on every row would look
+ * derived and would be what the coverage plan allocates questions on.
+ */
+export interface Requirement {
+  id: string;
+  text: string;
+  /** `null` when the label could not be located — an inferred requirement. */
+  span: SourceSpan | null;
+  concept_ids: string[];
+  /** False when nothing in the ontology corresponds to it. */
+  measurable: boolean;
+  /** `m04` or `offline_fallback`; `null` when it mapped to nothing. */
+  concept_source: ConceptSource | null;
+  source: string;
+}
+
 export interface JobDescription {
   id: string;
   company_name: string;
@@ -29,7 +63,10 @@ export interface JobDescription {
    * looking at one `id`, and this is why.
    */
   content_sha256: string;
+  /** The same labels as `requirements`, without the provenance. */
   required_skills: string[];
+  /** §5's contract: each requirement with the span it was written at. */
+  requirements: Requirement[];
   /** skill label -> concept_id. Only labels that resolved to something. */
   resolved_concepts: Record<string, string>;
   concept_source: Record<string, ConceptSource>;

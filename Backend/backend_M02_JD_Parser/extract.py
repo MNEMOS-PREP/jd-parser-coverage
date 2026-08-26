@@ -69,6 +69,7 @@ import re
 from typing import Any
 
 from ai_core.concepts import normalise_alias
+from pydantic import BaseModel, Field
 
 #: Longer than this and it is a sentence, not a skill. Five words admits
 #: "object oriented programming in java" and rejects a project bullet.
@@ -351,3 +352,119 @@ def drop_redundant(unresolved: list[str], resolved: list[str]) -> list[str]:
         kept.append(label)
 
     return kept
+
+
+# ---------------------------------------------------------------------------
+#  Where in the job description each requirement was written (FR-2.2)
+# ---------------------------------------------------------------------------
+#
+# Every other module in this platform holds one contract above the rest: a fact
+# points at the characters it came from. M01 calls `SourceSpan` "the atom of
+# traceability — everything downstream cites one of these". M02 produced a list
+# of strings.
+#
+# That is not a cosmetic gap. Without an offset:
+#
+#   · M05 cannot cite the JD line a grounded question came from;
+#   · a student cannot check a requirement we claim their JD contains;
+#   · "Python" appearing in "no Python required" is indistinguishable from
+#     "Python" in the requirements list, because there is nothing to look at.
+#
+# What is NOT built here is the rest of §5's `Requirement`: `kind`,
+# `necessity`, `weight`, `measured_by` and `seniority_signal`. They are omitted
+# rather than defaulted — a `necessity: "must"` on every requirement because
+# nothing reads the word "preferred" yet is a field that looks derived and is
+# not, and the coverage plan would then allocate questions on it.
+
+
+class SourceSpan(BaseModel):
+    """Where in the JD this requirement is written. Offsets into `raw_text`."""
+
+    start: int
+    end: int
+    #: Verbatim, for mechanical verification — the same property M01 relies on
+    #: to prove a span still resolves against the stored artifact.
+    text: str
+
+
+class Requirement(BaseModel):
+    """One thing the posting asks for, and where it says so.
+
+    A partial §5 `Requirement`: the fields below are derived from the document.
+    `kind`, `necessity`, `weight`, `measured_by` and `seniority_signal` are not
+    here yet, and are absent rather than defaulted.
+    """
+
+    id: str
+    text: str
+    span: SourceSpan | None
+    concept_ids: list[str] = Field(default_factory=list)
+    #: False when nothing in the ontology corresponds to it — "go-getter
+    #: attitude". §3.2.3: mark it and say so rather than faking a score.
+    measurable: bool = False
+    #: Where the id came from, when there is one. `m04` and a five-entry
+    #: offline guess are not the same claim.
+    concept_source: str | None = None
+    source: str = "jd"
+
+
+def requirement_pattern(label: str) -> re.Pattern[str]:
+    """Where this label is written, allowing for the line breaks a page has.
+
+    A space in the label matches any run of whitespace and an internal hyphen
+    may be followed by one, because a JD pasted out of a PDF wraps mid-phrase:
+    "Multi-\nmodal" and "machine\nlearning" are one requirement each, and a
+    literal search finds neither.
+    """
+    body = r"\s+".join(re.escape(token) for token in label.split())
+    body = body.replace(r"\-", r"-\s*")
+    return re.compile(r"\b" + body + r"\b", re.IGNORECASE)
+
+
+def locate(
+    text: str,
+    labels: list[str],
+    *,
+    resolved: dict[str, str],
+    sources: dict[str, str],
+) -> list[Requirement]:
+    """Every requirement, with the span it was written at.
+
+    First occurrence only. A JD that says "Python" four times is making one
+    requirement four times, and four spans would be four rows in a coverage
+    plan that allocates questions per row.
+
+    Ordered by position, so the list reads down the posting rather than in
+    whatever order extraction happened to resolve things.
+    """
+    found: list[tuple[int, Requirement]] = []
+
+    for index, label in enumerate(labels, start=1):
+        match = requirement_pattern(label).search(text)
+        span = (
+            SourceSpan(start=match.start(), end=match.end(), text=match.group(0))
+            if match
+            else None
+        )
+        concept_id = resolved.get(label)
+        found.append(
+            (
+                match.start() if match else len(text) + index,
+                Requirement(
+                    id=f"R-{index}",
+                    text=label,
+                    span=span,
+                    concept_ids=[concept_id] if concept_id else [],
+                    measurable=bool(concept_id),
+                    concept_source=sources.get(label),
+                ),
+            )
+        )
+
+    found.sort(key=lambda item: item[0])
+    # Renumbered after sorting, so `R-1` is the first requirement in the
+    # document rather than the first one the resolver happened to finish.
+    return [
+        requirement.model_copy(update={"id": f"R-{position}"})
+        for position, (_, requirement) in enumerate(found, start=1)
+    ]

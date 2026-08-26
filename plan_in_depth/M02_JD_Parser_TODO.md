@@ -34,8 +34,8 @@ _Nothing scouted for this module yet._
 | | |
 |---|---|
 | Status | **The parser half exists. The coverage planner does not.** |
-| Backend tests passing | **17** |
-| Release gates (`-m gate`) | **0** |
+| Backend tests passing | **32** |
+| Release gates (`-m gate`) | **6** |
 | Route decorators | **7** |
 | Frontend | present — `JdPage`, `ParsePage`, `CoveragePanel`, `DepsPage` |
 
@@ -66,7 +66,7 @@ one table whose requirements are a flat `list[str]`:
 | FR | | |
 |---|---|---|
 | FR-2.1 | 🟡 | Pasted text only. `JdParseIn` requires `raw_text`; no PDF/DOCX, no company+role |
-| FR-2.2 | ⬜ | No `kind`, `necessity`, `weight` — and **no spans at all** |
+| FR-2.2 | 🟡 | **Spans landed 2026-08-25** — every requirement carries a `SourceSpan` that resolves verbatim, and the JD screen quotes the line each one came from. Still no `kind`, `necessity` or `weight`: omitted rather than defaulted, because a `necessity: "must"` on every row would look derived and would be what the coverage plan allocates on |
 | FR-2.3 | ⬜ | No disjunctive `any_of` groups |
 | FR-2.4 | ⬜ | Eligibility is **actively discarded** — see below |
 | FR-2.6 | ⬜ | No role archetype inference |
@@ -74,7 +74,7 @@ one table whose requirements are a flat `list[str]`:
 | FR-2.9 | ⬜ | Nothing guarantees a probe per `must` |
 | FR-2.10 | ⬜ | Requirements are not editable |
 | FR-2.11 | ⬜ | No live coverage, no post-session report |
-| FR-2.12 | ⬜ | No content hashing anywhere — no cache |
+| FR-2.12 | ✅ | **Landed 2026-08-25.** Normalised (company, role, text) hash, looked up globally — the parse is shared, the gap is per-student. A hit answers 200 rather than 201 |
 | FR-2.13 | ⬜ | No M15 enrichment |
 | FR-2.14 | ⬜ | **P0.** Role-only mode does not exist |
 | FR-2.15 | ⬜ | Eligibility mismatch cannot be surfaced; it is not extracted |
@@ -87,15 +87,33 @@ one table whose requirements are a flat `list[str]`:
       opposite of FR-2.4, and it makes FR-2.15 impossible. Its own comment says
       these "belong in a structured eligibility field", so the intent is
       recorded and the field is not built.
-- ⬜ **No spans.** Every other module's contract is that a fact points at the
-      characters it came from. A requirement here cannot be traced to the JD
-      line that produced it, so M05 cannot cite it and a student cannot check
-      it.
+- ✅ **Spans (2026-08-25).** Every requirement carries an offset into
+      `raw_text`, asserted at `-m gate` to resolve verbatim — a span that points
+      at the wrong words is worse than no span, because it is a citation.
+- ⬜ **A requirements line longer than five words is read as prose.**
+      `- Experience with Docker and Kubernetes` yields nothing: `_list_lines`
+      only trusts a line under an enumerating heading if it has a delimiter or
+      is at most five words, and that one is six with no comma. Inherited from
+      M01's extractor, where a resume bullet genuinely is prose — a JD
+      requirement written as a sentence is not. Real, and costs whole
+      requirements.
 - ⬜ **`extract.py` is a copy of M01's.** Same functions, same
       `_COMMON_ENGLISH` guard, same `_split_conjunctions`. It is untracked, so
       it was copied in recently — and M01's hyphen-wrap fix of 2026-08-25 is
       NOT in it. This is the drift `Platform_Core` exists to prevent; the
       shared half belongs there or in one module that owns it.
+
+### 1.3b Landed 2026-08-25
+
+- ✅ **Identity.** `/coverage/{candidate_id}` took the id from the caller and
+      trusted it — any student's gap analysis to anyone who guessed a UUID.
+      Router-level `enforce_access` on `ai_core.identity`; the JD routes stay
+      open on purpose, because a posting is the company's and FR-2.12 shares
+      one parse across students.
+- ✅ **Contract gate.** Every route has a client, every hook has a screen,
+      every raw `fetch` sends identity. M02 was already in the good state; this
+      is what keeps it there while the module grows.
+- ✅ **FR-2.12**, and **FR-2.2's span half** — see the table above.
 
 ### 1.4 Honest summary
 

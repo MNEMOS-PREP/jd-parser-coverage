@@ -73,24 +73,44 @@ export function JdPage() {
             .
           </Empty>
         ) : (
-          <Panel className="px-4 py-3">
-            <div className="flex flex-wrap gap-1.5">
-              {data.required_skills.map((skill) => (
-                <Pill
-                  key={skill}
-                  tone={data.concept_source[skill] === "m04" ? "confirmed" : "reported"}
-                  title={
-                    data.resolved_concepts[skill]
-                      ? `${data.resolved_concepts[skill]} · ${
-                          data.concept_source[skill] === "m04"
-                            ? "resolved by M04"
-                            : "guessed offline, unconfirmed"
-                        }`
-                      : "no concept id"
-                  }
+          <Panel className="px-4 py-1">
+            {/* One row per requirement, each quoting the words it came from.
+                The span is the reason this is a list rather than a row of
+                chips: "we found Python" is a claim about the posting, and a
+                student can only check it against the line it was read from. */}
+            <div className="divide-y divide-line">
+              {data.requirements.map((requirement) => (
+                <div
+                  key={requirement.id}
+                  className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2"
                 >
-                  {skill}
-                </Pill>
+                  <span className="min-w-0">
+                    <span className="text-sm text-ink">{requirement.text}</span>
+                    {requirement.span && (
+                      <span className="provenance ml-2 break-words">
+                        &ldquo;{quote(data.raw_text, requirement.span)}&rdquo;
+                      </span>
+                    )}
+                  </span>
+                  <Pill
+                    tone={requirement.concept_source === "m04" ? "confirmed" : "reported"}
+                    title={
+                      requirement.concept_ids[0]
+                        ? `${requirement.concept_ids[0]} · ${
+                            requirement.concept_source === "m04"
+                              ? "resolved by M04"
+                              : "guessed offline, unconfirmed"
+                          }`
+                        : "no concept id — nothing downstream can test this"
+                    }
+                  >
+                    {requirement.measurable
+                      ? requirement.concept_source === "m04"
+                        ? "ontology"
+                        : "guessed offline"
+                      : "no concept yet"}
+                  </Pill>
+                </div>
               ))}
             </div>
           </Panel>
@@ -107,11 +127,13 @@ export function JdPage() {
             <p>
               The spec groups these by necessity (must / should / could), weights each one by
               emphasis and repetition, and resolves &ldquo;Java/Python/C++&rdquo; into one
-              any-of group. The backend returns none of that &mdash; no{" "}
+              any-of group. The backend now returns a{" "}
+              <code className="provenance">span</code> for each one &mdash; which is why every row
+              can quote the words it came from &mdash; but still no{" "}
               <code className="provenance">necessity</code>,{" "}
-              <code className="provenance">weight</code>,{" "}
-              <code className="provenance">span</code> or group &mdash; so ordering them here would
-              be an ordering this module invented.
+              <code className="provenance">weight</code> or group. Ordering them by importance
+              here would be an ordering this module invented, so they are in the order the posting
+              writes them.
             </p>
             <p>
               Eligibility (CGPA cutoff, backlogs, bond) is also not extracted, so the banner §2.3
@@ -144,4 +166,18 @@ export function JdPage() {
       </Section>
     </>
   );
+}
+
+/**
+ * The line a requirement was read from, trimmed to something quotable.
+ *
+ * Widened past the matched word on both sides, because "Python" on its own
+ * proves nothing — the whole question a student is checking is whether it
+ * appeared in the requirements or in "no Python required".
+ */
+function quote(text: string, span: { start: number; end: number }): string {
+  const from = Math.max(0, text.lastIndexOf("\n", span.start) + 1);
+  const to = text.indexOf("\n", span.end);
+  const line = text.slice(from, to === -1 ? undefined : to).trim();
+  return line.length > 90 ? `${line.slice(0, 90)}…` : line;
 }

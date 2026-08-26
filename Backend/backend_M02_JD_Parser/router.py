@@ -28,7 +28,7 @@ from sqlmodel import Session, select
 
 from backend_M02_JD_Parser.models import JobDescription
 
-from .extract import drop_redundant, extract_surface_forms, scan_prose
+from .extract import drop_redundant, extract_surface_forms, locate, scan_prose
 
 
 def get_db():
@@ -304,6 +304,17 @@ def parse_jd(
         raw_text=payload.raw_text,
         content_sha256=digest,
         required_skills=required,
+        # Located against the ORIGINAL text, so an offset here indexes exactly
+        # what the student pasted.
+        requirements=[
+            requirement.model_dump(mode="json")
+            for requirement in locate(
+                payload.raw_text,
+                required,
+                resolved=concepts_by_label,
+                sources=concept_source,
+            )
+        ],
         resolved_concepts=concepts_by_label,
         concept_source=concept_source,
         unresolved_skills=unresolved,

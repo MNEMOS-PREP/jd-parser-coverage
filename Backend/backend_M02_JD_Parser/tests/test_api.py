@@ -1,5 +1,7 @@
 import uuid
 
+import pytest
+
 
 def test_health(client):
     res = client.get("/health")
@@ -368,3 +370,80 @@ def test_the_digest_is_returned_so_a_client_can_see_the_sharing(client, m04):
     body = _parse_response(client).json()
 
     assert len(body["content_sha256"]) == 64
+
+
+# ---------------------------------------------------------------------------
+#  FR-2.2 — a requirement points at the characters it came from
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.gate
+def test_every_requirement_span_resolves_verbatim(client, m04):
+    """The platform's one contract above the others.
+
+    M01 calls `SourceSpan` "the atom of traceability — everything downstream
+    cites one of these", and asserts exactly this about its claims. M02
+    produced a list of strings, so M05 could not cite the JD line a grounded
+    question came from and a student could not check a requirement we said
+    their posting contained.
+
+    A span that does not resolve is worse than no span: it is a citation to
+    the wrong words.
+    """
+    body = _parse_response(client).json()
+    raw = body["raw_text"]
+
+    assert body["requirements"], "no requirements to check"
+    for requirement in body["requirements"]:
+        span = requirement["span"]
+        assert span is not None, f"{requirement['text']} was located nowhere"
+        assert raw[span["start"] : span["end"]] == span["text"], (
+            f"{requirement['text']}'s span points at {raw[span['start']:span['end']]!r}"
+        )
+
+
+def test_requirements_are_in_the_order_the_posting_writes_them(client, m04):
+    """Ordered by position, not by whatever order resolution finished in.
+
+    Nothing here ranks requirements by importance — `necessity` and `weight`
+    are not built — so document order is the only ordering this module can
+    claim without inventing one.
+    """
+    body = _parse_response(client).json()
+    requirements = body["requirements"]
+    starts = [r["span"]["start"] for r in requirements if r["span"]]
+
+    assert starts == sorted(starts)
+    # Numbered AFTER sorting, so R-1 is the first requirement in the document
+    # rather than the first one the resolver happened to finish. Asserted as a
+    # property rather than against a fixed count: what this JD yields depends
+    # on the extraction rules, and pinning the number here would make an
+    # ordering test fail whenever those change.
+    assert [r["id"] for r in requirements] == [f"R-{n}" for n in range(1, len(requirements) + 1)]
+
+
+def test_a_requirement_says_whether_anything_can_test_it(client, m04):
+    """§3.2.3: mark it `unmeasurable` and say so rather than faking a score.
+
+    `measurable` and `concept_source` travel with the requirement so a caller
+    cannot mistake an offline guess for an ontology-confirmed id — the same
+    provenance rule the flat lists already carried, now attached to the row
+    it describes.
+    """
+    body = _parse_response(client).json()
+
+    for requirement in body["requirements"]:
+        if requirement["measurable"]:
+            assert requirement["concept_ids"], "measurable with no concept id"
+            assert requirement["concept_source"] in {"m04", "offline_fallback"}
+        else:
+            assert requirement["concept_ids"] == []
+
+
+def test_the_flat_list_and_the_requirements_agree(client, m04):
+    """`required_skills` is kept because callers read it, exactly as M01 keeps
+    `parsed_skills` beside `skill_mentions`. Two lists that disagree is worse
+    than one list, so they are asserted to be the same labels."""
+    body = _parse_response(client).json()
+
+    assert sorted(body["required_skills"]) == sorted(r["text"] for r in body["requirements"])
