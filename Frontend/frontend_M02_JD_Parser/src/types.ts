@@ -21,6 +21,14 @@ export interface JobDescription {
   company_name: string;
   role_title: string;
   raw_text: string;
+  /**
+   * SHA-256 of the normalised (company, role, text) — FR-2.12.
+   *
+   * The parse is shared across every student who pastes the same posting;
+   * only the gap analysis is per-student. Two students on the same drive are
+   * looking at one `id`, and this is why.
+   */
+  content_sha256: string;
   required_skills: string[];
   /** skill label -> concept_id. Only labels that resolved to something. */
   resolved_concepts: Record<string, string>;

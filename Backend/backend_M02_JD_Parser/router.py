@@ -10,7 +10,9 @@ narrows the SCOPE of what we show, never the quality, and never silently):
    module work with M04 down; every value they produce is labelled as theirs.
 """
 
+import hashlib
 import json
+import re
 import urllib.request
 import uuid
 from functools import lru_cache
@@ -20,9 +22,9 @@ from typing import Any
 from ai_core.concepts import normalise_alias
 from ai_core.dependencies import DependencyRegistry, DependencyStatus
 from ai_core.identity import Principal, may_see, principal_from_headers
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from backend_M02_JD_Parser.models import JobDescription
 
@@ -158,6 +160,23 @@ def get_candidate_mastery(candidate_id: uuid.UUID) -> dict | None:
     return _m04_get(f"/v1/candidates/{candidate_id}/mastery")
 
 
+
+#: Whitespace is the only thing normalised away.
+#:
+#: Not casefold: a JD is prose, and lowering it would make two genuinely
+#: different postings collide about as often as it helps. Sixty pastes of one
+#: drive differ by line breaks and indentation — a copy out of a PDF, out of a
+#: portal, out of an email — and that is the whole difference the cache has to
+#: see through.
+_WHITESPACE = re.compile(r"\s+")
+
+
+def content_digest(company: str, role: str, text: str) -> str:
+    """The cache key for one job description (FR-2.12)."""
+    parts = [_WHITESPACE.sub(" ", value or "").strip() for value in (company, role, text)]
+    return hashlib.sha256("␟".join(parts).encode("utf-8")).hexdigest()
+
+
 class JdParseIn(BaseModel):
     company_name: str
     role_title: str
@@ -194,7 +213,32 @@ def dependency_health() -> list[DependencyStatus]:
 
 
 @router.post("/jds/parse", response_model=JobDescription, status_code=status.HTTP_201_CREATED)
-def parse_jd(payload: JdParseIn, session: Session = Depends(get_db)):
+def parse_jd(
+    payload: JdParseIn,
+    response: Response,
+    session: Session = Depends(get_db),
+):
+    # ------------------------------------------------------------------
+    #  FR-2.12 — the same JD, pasted by sixty students, is parsed once.
+    #
+    #  Looked up GLOBALLY rather than per candidate, and that is the whole
+    #  point of the requirement: §3.2.4 is explicit that "the parse is shared,
+    #  the gap analysis is per-student". M01's equivalent dedup is scoped to
+    #  one candidate because a resume belongs to one person; a posting belongs
+    #  to a company and sixty people are preparing for it.
+    #
+    #  A hit answers 200 rather than 201: nothing was created. The row it
+    #  returns is the row the first student's paste made, so a coverage request
+    #  against it is the same request either way.
+    # ------------------------------------------------------------------
+    digest = content_digest(payload.company_name, payload.role_title, payload.raw_text)
+    cached = session.exec(
+        select(JobDescription).where(JobDescription.content_sha256 == digest)
+    ).first()
+    if cached is not None:
+        response.status_code = status.HTTP_200_OK
+        return cached
+
     concepts = get_m04_concepts()
     scanned_against = "m04" if concepts else "offline_lexicon"
     if not concepts:
@@ -258,6 +302,7 @@ def parse_jd(payload: JdParseIn, session: Session = Depends(get_db)):
         company_name=payload.company_name,
         role_title=payload.role_title,
         raw_text=payload.raw_text,
+        content_sha256=digest,
         required_skills=required,
         resolved_concepts=concepts_by_label,
         concept_source=concept_source,

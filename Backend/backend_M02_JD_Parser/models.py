@@ -16,6 +16,22 @@ class JobDescription(SQLModel, table=True):
     company_name: str
     role_title: str
     raw_text: str
+
+    #: SHA-256 of the NORMALISED (company, role, text). FR-2.12, and §3.2.4:
+    #: *"The same JD is pasted by 60 students. Normalise and cache by content
+    #: hash; the parse is shared, the gap analysis is per-student."*
+    #:
+    #: Normalised first, because sixty pastes of one posting differ by
+    #: whitespace: a copy out of a PDF, a copy out of a portal and a copy out of
+    #: an email are the same document with different line breaks, and hashing
+    #: them raw makes the cache miss every time and the module look like it
+    #: never had one.
+    #:
+    #: Company and role are IN the hash, not just the text. Two drives can post
+    #: identical text — the same boilerplate JD under two companies — and
+    #: returning the first one's label to the second student would put the
+    #: wrong company name on their coverage screen.
+    content_sha256: str = Field(default="", index=True)
     required_skills: list[str] = Field(default_factory=list, sa_column=Column(JSON))
 
     #: skill_label -> concept_id. Only labels we have an id for; see

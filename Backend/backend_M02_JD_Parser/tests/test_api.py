@@ -295,3 +295,76 @@ def test_qualifiers_are_stripped_from_the_requirement(client, m04_mastery):
     parsed = _parse(client, "Required: strong Python, hands-on Docker, experience with React.")
 
     assert parsed["required_skills"] == ["Python", "Docker", "React"]
+
+
+# ---------------------------------------------------------------------------
+#  FR-2.12 — one parse, sixty students
+# ---------------------------------------------------------------------------
+
+CACHED_JD = """Software Engineer, Backend
+
+Requirements:
+- Strong Python and SQL
+- Experience with Docker and Kubernetes
+"""
+
+
+# Not `_parse` — this file already has one, which returns the parsed body. The
+# cache tests need the RESPONSE, because 201-vs-200 is the thing being asserted.
+def _parse_response(client, text=CACHED_JD, company="Acme", role="Backend Engineer"):
+    return client.post(
+        "/v1/jds/parse",
+        json={"company_name": company, "role_title": role, "raw_text": text},
+    )
+
+
+def test_the_same_jd_is_parsed_once_and_shared(client, m04):
+    """§3.2.4: *"The same JD is pasted by 60 students… the parse is shared, the
+    gap analysis is per-student."*
+
+    Looked up globally rather than per candidate, which is the whole point: a
+    resume belongs to one person, a posting belongs to a company and sixty
+    people are preparing for it.
+    """
+    first = _parse_response(client)
+    second = _parse_response(client)
+
+    assert first.status_code == 201
+    assert second.status_code == 200, "a second paste created a second row"
+    assert first.json()["id"] == second.json()["id"]
+
+
+def test_whitespace_does_not_defeat_the_cache(client, m04):
+    """Sixty pastes of one posting differ by line breaks.
+
+    A copy out of a PDF, out of a portal and out of an email are the same
+    document formatted three ways. Hashing them raw makes the cache miss every
+    time and the module look like it never had one.
+    """
+    first = _parse_response(client)
+    reflowed = CACHED_JD.replace("\n", "\n  ").replace("- ", "-   ")
+    second = _parse_response(client, text=reflowed)
+
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"]
+
+
+def test_the_same_text_under_a_different_company_is_a_different_jd(client, m04):
+    """Company and role are IN the hash, not just the text.
+
+    Two drives can post identical boilerplate. Returning the first one's label
+    to the second student would put the wrong company name on their coverage
+    screen — a quiet error on the one field they would never think to check.
+    """
+    first = _parse_response(client, company="Acme")
+    second = _parse_response(client, company="Globex")
+
+    assert second.status_code == 201
+    assert second.json()["id"] != first.json()["id"]
+    assert second.json()["company_name"] == "Globex"
+
+
+def test_the_digest_is_returned_so_a_client_can_see_the_sharing(client, m04):
+    body = _parse_response(client).json()
+
+    assert len(body["content_sha256"]) == 64
