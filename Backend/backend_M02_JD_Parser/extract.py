@@ -232,6 +232,13 @@ def _split_conjunctions(label: str) -> list[str]:
     return [p.strip() for p in parts if p.strip() and len(p.split()) <= 3]
 
 
+#: A line that opens with a list glyph. §3.2.2 of M01's spec calls bullet
+#: detection "a line-classification problem, not a character match", and this is
+#: the classification half a JD needs: the marker says "what follows is an item"
+#: regardless of how many words the item takes.
+_BULLET = re.compile(r"^\s*(?:[-*•·▪‣⁃]|\d+[.)]|[a-z][.)])\s+", re.IGNORECASE)
+
+
 def _list_lines(text: str) -> list[str]:
     """The lines of the document that are enumerating something."""
     lines = text.splitlines()
@@ -256,9 +263,28 @@ def _list_lines(text: str) -> list[str]:
             continue
 
         if in_list:
-            # A prose bullet under a skills heading is still prose; a line with
-            # no delimiter and more than MAX_WORDS words is a sentence.
-            if _DELIMITERS.search(line) or len(line.split()) <= MAX_WORDS:
+            # A BULLET is the enumeration signal, whatever its length.
+            #
+            # This rule came from M01, where it is right: under a resume's
+            # SKILLS heading, a long undelimited line is prose and treating it
+            # as a skill list produces nonsense. A job description is the
+            # opposite. Its requirements are written as sentences on purpose —
+            #
+            #     - Experience with Docker and Kubernetes
+            #
+            # is six tokens with no delimiter, so it extracted NOTHING and two
+            # real requirements were silently lost. Everything downstream then
+            # operates on a requirement set the posting does not have.
+            #
+            # `_clean` already knows what to do with it: `_LEADING_NOISE`
+            # strips "Experience with", `_split_conjunctions` gives Docker and
+            # Kubernetes, and a genuinely prose bullet ("We are looking for
+            # someone who thrives in ambiguity") still yields nothing, because
+            # it survives `_clean` as one label of more than MAX_WORDS words
+            # and `_acceptable` refuses it. The word cap moved from the LINE,
+            # where it was throwing away requirements, to the LABEL, where it
+            # was already doing the work.
+            if _BULLET.match(line) or _DELIMITERS.search(line) or len(line.split()) <= MAX_WORDS:
                 out.append(line)
             else:
                 in_list = False
@@ -390,14 +416,23 @@ class SourceSpan(BaseModel):
 class Requirement(BaseModel):
     """One thing the posting asks for, and where it says so.
 
-    A partial §5 `Requirement`: the fields below are derived from the document.
-    `kind`, `necessity`, `weight`, `measured_by` and `seniority_signal` are not
-    here yet, and are absent rather than defaulted.
+    A partial §5 `Requirement`. `kind`, `measured_by` and `seniority_signal`
+    are not here yet and are absent rather than defaulted.
+
+    `necessity` and `weight` ARE derived now — see `necessity_at` and §6.4's
+    formula below. They were the two the coverage plan allocates on, which is
+    why they came first.
     """
 
     id: str
     text: str
     span: SourceSpan | None
+    #: `must` | `should` | `could`, from modal language (§6.4).
+    necessity: str = "should"
+    #: 0-1, normalised across the set. What the coverage plan allocates on.
+    weight: float = 0.0
+    #: How many times the posting says it. Repetition IS emphasis (§6.4).
+    mentions: int = 1
     concept_ids: list[str] = Field(default_factory=list)
     #: False when nothing in the ontology corresponds to it — "go-getter
     #: attitude". §3.2.3: mark it and say so rather than faking a score.
@@ -421,6 +456,145 @@ def requirement_pattern(label: str) -> re.Pattern[str]:
     return re.compile(r"\b" + body + r"\b", re.IGNORECASE)
 
 
+# ---------------------------------------------------------------------------
+#  Necessity and weight (FR-2.2, §6.4)
+# ---------------------------------------------------------------------------
+#
+# §3.2.1 Trap 2: *"'Good knowledge of DSA, OOPs, DBMS' and 'Bonus: familiarity
+# with Docker' are not equal, and a flat list makes them equal."*
+#
+# A flat list is what M02 produced, and it is what the coverage plan would have
+# allocated its question budget across — so a bonus nice-to-have would have
+# taken interview time from a stated must.
+#
+# Read from modal language, deterministically. Two places carry it and the
+# second is the one the trap is about:
+#
+#   the line   "Strong Python"            "Docker is a plus"
+#   the HEAD   "Required:"                "Bonus:"
+#
+# A requirement under "Nice to have:" is a `could` even when its own line says
+# nothing, which is exactly the Docker case. The line wins when both speak,
+# because "Docker (required)" under a Bonus heading is the posting correcting
+# itself.
+
+#: Modal language that makes a requirement non-negotiable.
+_MUST = re.compile(
+    r"\b(?:must\s+have|must\b|required|mandatory|essential|strong(?:ly)?|"
+    r"solid\s+(?:knowledge|grasp|understanding)|proficien\w*|expert\w*|"
+    r"deep\s+(?:knowledge|understanding)|is\s+a\s+must)\b",
+    re.IGNORECASE,
+)
+
+#: Language that makes it explicitly optional.
+_COULD = re.compile(
+    r"\b(?:nice\s+to\s+have|good\s+to\s+have|a\s+plus|is\s+a\s+plus|bonus|"
+    r"desirable|preferred|optional|advantage|would\s+be\s+(?:great|nice)|"
+    r"exposure\s+to|familiarity\s+with|awareness\s+of)\b",
+    re.IGNORECASE,
+)
+
+#: Headings that govern everything under them until the next heading.
+_MUST_HEADING = re.compile(
+    r"^\s*(?:required|requirements|must\s+have|essential|minimum\s+qualifications|"
+    r"what\s+you\s+(?:need|must\s+have)|mandatory)\b",
+    re.IGNORECASE,
+)
+_COULD_HEADING = re.compile(
+    r"^\s*(?:bonus|nice\s+to\s+have|good\s+to\s+have|preferred|desirable|optional|"
+    r"plus(?:es)?|added\s+advantage|what\s+would\s+set\s+you\s+apart)\b",
+    re.IGNORECASE,
+)
+
+
+def _line_bounds(text: str, offset: int) -> tuple[int, int]:
+    start = text.rfind("\n", 0, offset) + 1
+    end = text.find("\n", offset)
+    return start, len(text) if end == -1 else end
+
+
+def _governing_heading(text: str, line_start: int) -> str:
+    """The nearest heading above this line, or "" if there is none.
+
+    Walks up until a line that looks like a heading — one that ends in a colon,
+    or that a necessity-heading pattern recognises. A blank line does not stop
+    the walk: a JD puts one between the heading and its list about as often as
+    it does not.
+    """
+    for candidate in reversed(text[:line_start].splitlines()):
+        stripped = candidate.strip()
+        if not stripped:
+            continue
+        if (
+            stripped.endswith(":")
+            or _MUST_HEADING.match(stripped)
+            or _COULD_HEADING.match(stripped)
+        ):
+            return stripped
+    return ""
+
+
+def necessity_at(text: str, offset: int) -> str:
+    """`must`, `should` or `could` for the requirement written at `offset`.
+
+    `should` is the default, and it is the honest one. A posting that lists a
+    technology under a neutral heading with no modal word has not said the
+    requirement is negotiable and has not said it is not — and defaulting to
+    `must` would put maximum weight on every unqualified line, which is a flat
+    list wearing a necessity field.
+    """
+    line_start, line_end = _line_bounds(text, offset)
+    line = text[line_start:line_end]
+
+    # The line wins: "Docker (required)" under a Bonus heading is the posting
+    # correcting itself, and the more specific statement is the later one.
+    if _COULD.search(line):
+        return "could"
+    if _MUST.search(line):
+        return "must"
+
+    heading = _governing_heading(text, line_start)
+    if _COULD_HEADING.match(heading):
+        return "could"
+    if _MUST_HEADING.match(heading):
+        return "must"
+
+    return "should"
+
+
+#: §6.4's multipliers, verbatim.
+_NECESSITY_MULT = {"must": 1.0, "should": 0.6, "could": 0.3}
+
+
+def _raw_weight(text: str, requirement: Requirement, mentions: int) -> float:
+    """§6.4's formula, with the terms this module can actually compute.
+
+    `emphasis_w` is 1.2 for a bulleted line under a must heading. The spec says
+    "bold or bulleted", and there is no bold in plain text — claiming one would
+    be inventing a signal the input does not carry.
+
+    `source_w` is 1.0 for every requirement here because they all come from the
+    JD. It stays in the expression rather than being folded away, so the day
+    archetype backfill lands (FR-2.6) the 0.75 has somewhere to go.
+    """
+    necessity_mult = _NECESSITY_MULT[requirement.necessity]
+
+    if requirement.span is not None and text:
+        position_w = 1.0 - 0.4 * (requirement.span.start / len(text))
+        line_start, line_end = _line_bounds(text, requirement.span.start)
+        bulleted = bool(_BULLET.match(text[line_start:line_end]))
+        emphasis_w = 1.2 if bulleted and requirement.necessity == "must" else 1.0
+    else:
+        # Located nowhere: no position to reward and no line to look at.
+        position_w = 0.6
+        emphasis_w = 1.0
+
+    repetition_w = min(1.0, 0.6 + 0.2 * (mentions - 1))
+    source_w = 1.0 if requirement.source == "jd" else 0.75
+
+    return necessity_mult * position_w * repetition_w * emphasis_w * source_w
+
+
 def locate(
     text: str,
     labels: list[str],
@@ -440,11 +614,11 @@ def locate(
     found: list[tuple[int, Requirement]] = []
 
     for index, label in enumerate(labels, start=1):
-        match = requirement_pattern(label).search(text)
+        pattern = requirement_pattern(label)
+        match = pattern.search(text)
+        mentions = len(pattern.findall(text)) or 1
         span = (
-            SourceSpan(start=match.start(), end=match.end(), text=match.group(0))
-            if match
-            else None
+            SourceSpan(start=match.start(), end=match.end(), text=match.group(0)) if match else None
         )
         concept_id = resolved.get(label)
         found.append(
@@ -454,6 +628,8 @@ def locate(
                     id=f"R-{index}",
                     text=label,
                     span=span,
+                    necessity=necessity_at(text, match.start()) if match else "should",
+                    mentions=mentions,
                     concept_ids=[concept_id] if concept_id else [],
                     measurable=bool(concept_id),
                     concept_source=sources.get(label),
@@ -462,11 +638,26 @@ def locate(
         )
 
     found.sort(key=lambda item: item[0])
+    ordered = [requirement for _, requirement in found]
+
+    # Weights are normalised ACROSS the set, so they cannot be computed until
+    # every requirement is known. §6.4: `weight = raw / sum(all_raw)`.
+    raws = [_raw_weight(text, requirement, requirement.mentions) for requirement in ordered]
+    total = sum(raws)
+
     # Renumbered after sorting, so `R-1` is the first requirement in the
     # document rather than the first one the resolver happened to finish.
     return [
-        requirement.model_copy(update={"id": f"R-{position}"})
-        for position, (_, requirement) in enumerate(found, start=1)
+        requirement.model_copy(
+            update={
+                "id": f"R-{position}",
+                # An empty set has no weights to normalise; one with zero total
+                # raw weight would divide by zero. Neither can happen from a
+                # real posting, and both would take the parse down.
+                "weight": round(raw / total, 4) if total else 0.0,
+            }
+        )
+        for position, (requirement, raw) in enumerate(zip(ordered, raws, strict=True), start=1)
     ]
 
 

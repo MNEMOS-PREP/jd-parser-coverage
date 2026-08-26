@@ -37,11 +37,27 @@ export interface SourceSpan {
  * rather than defaulted, since a `necessity: "must"` on every row would look
  * derived and would be what the coverage plan allocates questions on.
  */
+/**
+ * §6.4's three levels. Ordered here the way they are ranked, so a `Necessity[]`
+ * literal reads down from strongest.
+ */
+export type Necessity = "must" | "should" | "could";
+
 export interface Requirement {
   id: string;
   text: string;
   /** `null` when the label could not be located — an inferred requirement. */
   span: SourceSpan | null;
+  /**
+   * How badly the posting wants it, read from modal language and the heading
+   * it sits under. `should` is the default and means the JD did not say —
+   * not that it is optional.
+   */
+  necessity: Necessity;
+  /** 0-1, normalised across the set. The share of interview time it earns. */
+  weight: number;
+  /** How many times the posting names it. Repetition is emphasis (§6.4). */
+  mentions: number;
   concept_ids: string[];
   /** False when nothing in the ontology corresponds to it. */
   measurable: boolean;
@@ -109,7 +125,8 @@ export interface JobDescription {
  * calls `not_tested`. Same fact, two vocabularies, and the mapping lives in
  * one place — `CoverageRow` — rather than being re-derived per screen.
  */
-export type GapState = "strong" | "adequate" | "weak" | "not_measured" | "unmeasurable";
+export type GapState =
+  "strong" | "adequate" | "weak" | "not_measured" | "unmeasurable";
 
 export interface Coverage {
   jd_id: string;

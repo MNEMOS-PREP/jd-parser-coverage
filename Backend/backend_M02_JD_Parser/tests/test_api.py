@@ -398,7 +398,7 @@ def test_every_requirement_span_resolves_verbatim(client, m04):
         span = requirement["span"]
         assert span is not None, f"{requirement['text']} was located nowhere"
         assert raw[span["start"] : span["end"]] == span["text"], (
-            f"{requirement['text']}'s span points at {raw[span['start']:span['end']]!r}"
+            f"{requirement['text']}'s span points at {raw[span['start'] : span['end']]!r}"
         )
 
 
@@ -515,7 +515,9 @@ def test_a_posting_that_states_no_bar_says_so_rather_than_zero(client, m04):
     drive nobody has checked them against, which is the one wrong answer this
     field exists to prevent.
     """
-    body = _parse_response(client, text="Backend Engineer.\n\nRequirements:\n- Python, SQL\n").json()
+    body = _parse_response(
+        client, text="Backend Engineer.\n\nRequirements:\n- Python, SQL\n"
+    ).json()
     eligibility = body["eligibility"]
 
     assert eligibility["stated"] is False
@@ -524,7 +526,7 @@ def test_a_posting_that_states_no_bar_says_so_rather_than_zero(client, m04):
 
 
 def test_a_percentage_cutoff_is_not_read_as_a_cgpa(client, m04):
-    """"70% throughout academics" is a real bar and it is not a CGPA.
+    """ "70% throughout academics" is a real bar and it is not a CGPA.
 
     Storing 70.0 in `min_cgpa` would tell every student on a ten-point scale
     that they are ineligible.
@@ -532,3 +534,180 @@ def test_a_percentage_cutoff_is_not_read_as_a_cgpa(client, m04):
     body = _parse_response(client, text="Requires 70% throughout academics.\n").json()
 
     assert body["eligibility"]["min_cgpa"] is None
+
+
+# ---------------------------------------------------------------------------
+#  A bulleted requirement is a requirement, however long it is
+# ---------------------------------------------------------------------------
+
+
+def test_a_requirement_written_as_a_sentence_is_not_lost(client, m04):
+    """`- Experience with Docker and Kubernetes` used to extract NOTHING.
+
+    Six tokens, no delimiter, so the line-length rule inherited from M01 read
+    it as prose. In a resume's SKILLS block that rule is right; a job
+    description writes its requirements as sentences on purpose, and two real
+    requirements were silently missing from every coverage plan built on that
+    posting.
+    """
+    body = _parse_response(
+        client,
+        text="Requirements:\n- Strong Python and SQL\n- Experience with Docker and Kubernetes\n",
+    ).json()
+
+    assert "Docker" in body["required_skills"]
+    assert "Kubernetes" in body["required_skills"]
+
+
+def test_a_prose_bullet_still_yields_nothing(client, m04):
+    """The other side of the line, and the reason the rule existed.
+
+    The word cap moved from the LINE to the LABEL, where `_acceptable` was
+    already applying it. A bullet of genuine prose survives `_clean` as one
+    long label and is refused — so recovering real requirements did not buy
+    invented ones.
+    """
+    body = _parse_response(
+        client,
+        text=(
+            "Requirements:\n"
+            "- We are looking for someone who thrives in ambiguity and enjoys mentoring juniors\n"
+        ),
+    ).json()
+
+    assert body["required_skills"] == []
+
+
+def test_a_numbered_list_is_a_list(client, m04):
+    """M01 §3.2.2: bullet detection is "a line-classification problem, not a
+    character match". `1.` and `a)` are markers too."""
+    body = _parse_response(
+        client, text="Requirements:\n1. Familiarity with Kubernetes\n2. SQL\n"
+    ).json()
+
+    assert set(body["required_skills"]) >= {"Kubernetes", "SQL"}
+
+
+# ---------------------------------------------------------------------------
+#  Necessity and weight (FR-2.2, §6.4)
+# ---------------------------------------------------------------------------
+
+
+NECESSITY_JD = """Software Engineer, Backend
+
+Requirements:
+- Strong Python and SQL
+- Good knowledge of DSA, OOPs, DBMS
+
+Nice to have:
+- Familiarity with Kubernetes
+- Exposure to Kafka
+"""
+
+
+def _parsed(client, text: str) -> dict:
+    """Parse and read the body, failing on the status rather than on a TypeError.
+
+    `_parse_response` returns the `Response` on purpose — the caching tests
+    assert on 200 vs 201, which is the whole thing they are about. These tests
+    only care about the body, and want a readable failure when the parse itself
+    is what broke.
+    """
+    res = _parse_response(client, text)
+    assert res.status_code in (200, 201), res.text
+    return res.json()
+
+
+def _by_text(requirements: list[dict], label: str) -> dict:
+    for requirement in requirements:
+        if requirement["text"] == label:
+            return requirement
+    raise AssertionError(f"{label!r} not extracted; got {[r['text'] for r in requirements]}")
+
+
+def test_the_trap_in_the_spec_is_no_longer_flattened(client, m04):
+    """§3.2.1 trap 2, verbatim: these two are not equal, and a flat list made them equal.
+
+    The consequence is not cosmetic. FR-2.8 allocates the interview's question
+    budget across this list, so a bonus nice-to-have was taking question slots
+    from a stated must — the student gets asked about Kubernetes instead of
+    about the thing that will actually decide the interview.
+    """
+    body = _parsed(client, NECESSITY_JD)
+    requirements = body["requirements"]
+
+    assert _by_text(requirements, "DSA")["necessity"] == "must"
+    assert _by_text(requirements, "Kubernetes")["necessity"] == "could"
+
+    # And the weights follow, which is the half that downstream reads.
+    assert _by_text(requirements, "DSA")["weight"] > _by_text(requirements, "Kubernetes")["weight"]
+
+
+def test_a_heading_governs_the_lines_under_it(client, m04):
+    """ "Familiarity with Kubernetes" is a `could` because of where it sits.
+
+    Its own line carries no "bonus" or "plus" — only the heading two lines up
+    does. Reading the line alone would file it as a neutral `should` and give it
+    twice the weight the posting intends.
+    """
+    body = _parsed(client, NECESSITY_JD)
+
+    assert _by_text(body["requirements"], "Kafka")["necessity"] == "could"
+
+
+def test_silence_is_should_and_not_must(client, m04):
+    """The default has to be the honest one.
+
+    A posting that names a technology under a neutral heading with no modal word
+    has not said the requirement is firm. Defaulting to `must` would put maximum
+    weight on every unqualified line — a flat list wearing a necessity field.
+    """
+    body = _parsed(client, "Backend Engineer\n\nQualifications:\n- Python\n- SQL\n- Docker\n")
+
+    assert {r["necessity"] for r in body["requirements"]} == {"should"}
+
+
+def test_weights_are_a_distribution(client, m04):
+    """They sum to 1, because a question budget is divided and not scored.
+
+    A weight that is an independent 0-1 score per requirement cannot be split
+    into "three questions here, one there" without renormalising at every call
+    site, and one of those call sites will forget.
+    """
+    body = _parsed(client, NECESSITY_JD)
+    weights = [r["weight"] for r in body["requirements"]]
+
+    assert weights, "no requirements extracted"
+    assert all(0.0 <= weight <= 1.0 for weight in weights)
+    assert abs(sum(weights) - 1.0) < 0.01
+
+
+def test_repetition_counts_as_emphasis(client, m04):
+    """A posting that says "Python" four times is leaning on it.
+
+    §6.4 is explicit that repetition is emphasis. It is also the signal that
+    survives a posting with no headings and no modal language at all, which is
+    most of them.
+    """
+    body = _parsed(
+        client,
+        "Data Engineer\n\nWe use Python across the stack, and Python is the language\n"
+        "every service is written in.\n\nSkills:\n- Python\n- SQL\n",
+    )
+
+    assert _by_text(body["requirements"], "Python")["mentions"] == 3
+    assert _by_text(body["requirements"], "SQL")["mentions"] == 1
+
+    # Same necessity, same heading, adjacent positions: repetition is the only
+    # thing separating them, and it has to actually move the number.
+    assert (
+        _by_text(body["requirements"], "Python")["weight"]
+        > _by_text(body["requirements"], "SQL")["weight"]
+    )
+
+    # Same necessity, same heading, same-ish position: repetition is the only
+    # thing separating them, and it has to actually move the number.
+    assert (
+        _by_text(body["requirements"], "Python")["weight"]
+        > _by_text(body["requirements"], "SQL")["weight"]
+    )

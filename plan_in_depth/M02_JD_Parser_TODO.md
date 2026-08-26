@@ -66,7 +66,7 @@ one table whose requirements are a flat `list[str]`:
 | FR | | |
 |---|---|---|
 | FR-2.1 | 🟡 | Pasted text only. `JdParseIn` requires `raw_text`; no PDF/DOCX, no company+role |
-| FR-2.2 | 🟡 | **Spans landed 2026-08-25** — every requirement carries a `SourceSpan` that resolves verbatim, and the JD screen quotes the line each one came from. Still no `kind`, `necessity` or `weight`: omitted rather than defaulted, because a `necessity: "must"` on every row would look derived and would be what the coverage plan allocates on |
+| FR-2.2 | 🟡 | **Spans 2026-08-25, necessity + weight 2026-08-27** — every requirement carries a `SourceSpan` that resolves verbatim, a `necessity` read from the posting's own modal language and the heading the line sits under, a `mentions` count, and a `weight` normalised across the set by §6.4's formula. §3.2.1 trap 2 is closed: "Bonus: familiarity with Docker" now weighs ~6× less than a stated must instead of exactly the same. `should` is the default and means *the posting did not say* — not *optional*. Still missing: `kind`, `measured_by`, `seniority_signal`, and `emphasis_w` reads bulleting only, because plain text carries no bold |
 | FR-2.3 | ⬜ | No disjunctive `any_of` groups |
 | FR-2.4 | 🟡 | **Landed 2026-08-25.** CGPA, backlogs, batch and bond extracted with spans, stored beside the requirements rather than among them. `allowed_branches`, `location` and the package figures are still absent — omitted, not guessed |
 | FR-2.6 | ⬜ | No role archetype inference |
@@ -93,13 +93,28 @@ one table whose requirements are a flat `list[str]`:
 - ✅ **Spans (2026-08-25).** Every requirement carries an offset into
       `raw_text`, asserted at `-m gate` to resolve verbatim — a span that points
       at the wrong words is worse than no span, because it is a citation.
-- ⬜ **A requirements line longer than five words is read as prose.**
-      `- Experience with Docker and Kubernetes` yields nothing: `_list_lines`
-      only trusts a line under an enumerating heading if it has a delimiter or
-      is at most five words, and that one is six with no comma. Inherited from
-      M01's extractor, where a resume bullet genuinely is prose — a JD
-      requirement written as a sentence is not. Real, and costs whole
-      requirements.
+- ✅ **A requirements line longer than five words is read as prose
+      (fixed 2026-08-27).** `- Experience with Docker and Kubernetes` yielded
+      nothing: `_list_lines` only trusted a line under an enumerating heading if
+      it had a delimiter or was at most five words, and that one is six with no
+      comma. Inherited from M01's extractor, where a resume bullet genuinely is
+      prose — a JD requirement written as a sentence is not. A bullet glyph is
+      now an enumeration signal whatever the line's length; the word cap moved
+      from the LINE to the LABEL, where `_acceptable` was already applying it,
+      so a genuinely prose bullet still yields nothing.
+- ⬜ **The heading vocabulary is a fixed list of 30 phrases, and a JD that
+      words its heading differently extracts NOTHING.** `_list_lines` only
+      enters list mode under a `_HEADINGS` match, so `Responsibilities:`,
+      `What you will do:` and `Your day to day:` — all common, and all places
+      a posting names its stack — produce zero requirements from the bullets
+      beneath them. Found 2026-08-27 while writing necessity tests: two test
+      JDs that looked entirely ordinary parsed to an empty list.
+      Not fixed here, because it is not a vocabulary problem. Adding
+      `responsibilities` pulls in `- Design scalable systems`, which survives
+      `_acceptable` at five words and becomes a fabricated requirement. The
+      real fix is a label-level test of *does this name a thing rather than an
+      action*, which is the same judgement `_COMMON_ENGLISH` is a crude
+      stand-in for. Own change, own tests.
 - ⬜ **`extract.py` is a copy of M01's.** Same functions, same
       `_COMMON_ENGLISH` guard, same `_split_conjunctions`. It is untracked, so
       it was copied in recently — and M01's hyphen-wrap fix of 2026-08-25 is
