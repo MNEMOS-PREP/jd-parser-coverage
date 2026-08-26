@@ -50,6 +50,30 @@ export interface Requirement {
   source: string;
 }
 
+/**
+ * The hard filters on who may sit this drive (FR-2.4).
+ *
+ * Every field is `null` when the posting does not say — not zero, not a
+ * permissive default. "This JD does not state a cutoff" and "this JD has no
+ * cutoff" are different facts, and a `min_cgpa: 0` would tell a student they
+ * are eligible for a drive nobody checked them against.
+ *
+ * `stated` is the field to branch on: all-nulls and a genuinely open drive look
+ * identical otherwise, and only one of them means we looked.
+ *
+ * PARTIAL against §5: `allowed_branches`, `location` and the package figures
+ * are not extracted yet and are absent rather than guessed.
+ */
+export interface EligibilityCriteria {
+  min_cgpa: number | null;
+  max_backlogs_active: number | null;
+  year_of_passing: number[];
+  bond_months: number | null;
+  /** The lines these were read from, so a student can check the cutoff. */
+  raw_spans: SourceSpan[];
+  stated: boolean;
+}
+
 export interface JobDescription {
   id: string;
   company_name: string;
@@ -67,6 +91,8 @@ export interface JobDescription {
   required_skills: string[];
   /** §5's contract: each requirement with the span it was written at. */
   requirements: Requirement[];
+  /** The hard filters — CGPA, backlogs, batch, bond. Never interview topics. */
+  eligibility: EligibilityCriteria;
   /** skill label -> concept_id. Only labels that resolved to something. */
   resolved_concepts: Record<string, string>;
   concept_source: Record<string, ConceptSource>;

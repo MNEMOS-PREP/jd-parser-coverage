@@ -28,7 +28,13 @@ from sqlmodel import Session, select
 
 from backend_M02_JD_Parser.models import JobDescription
 
-from .extract import drop_redundant, extract_surface_forms, locate, scan_prose
+from .extract import (
+    drop_redundant,
+    extract_eligibility,
+    extract_surface_forms,
+    locate,
+    scan_prose,
+)
 
 
 def get_db():
@@ -306,6 +312,9 @@ def parse_jd(
         required_skills=required,
         # Located against the ORIGINAL text, so an offset here indexes exactly
         # what the student pasted.
+        # A hard filter, never an interview topic (§3.2.2) — so it is stored
+        # beside the requirements rather than among them.
+        eligibility=extract_eligibility(payload.raw_text).model_dump(mode="json"),
         requirements=[
             requirement.model_dump(mode="json")
             for requirement in locate(

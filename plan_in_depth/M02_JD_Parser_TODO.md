@@ -34,7 +34,7 @@ _Nothing scouted for this module yet._
 | | |
 |---|---|
 | Status | **The parser half exists. The coverage planner does not.** |
-| Backend tests passing | **32** |
+| Backend tests passing | **37** |
 | Release gates (`-m gate`) | **6** |
 | Route decorators | **7** |
 | Frontend | present — `JdPage`, `ParsePage`, `CoveragePanel`, `DepsPage` |
@@ -68,7 +68,7 @@ one table whose requirements are a flat `list[str]`:
 | FR-2.1 | 🟡 | Pasted text only. `JdParseIn` requires `raw_text`; no PDF/DOCX, no company+role |
 | FR-2.2 | 🟡 | **Spans landed 2026-08-25** — every requirement carries a `SourceSpan` that resolves verbatim, and the JD screen quotes the line each one came from. Still no `kind`, `necessity` or `weight`: omitted rather than defaulted, because a `necessity: "must"` on every row would look derived and would be what the coverage plan allocates on |
 | FR-2.3 | ⬜ | No disjunctive `any_of` groups |
-| FR-2.4 | ⬜ | Eligibility is **actively discarded** — see below |
+| FR-2.4 | 🟡 | **Landed 2026-08-25.** CGPA, backlogs, batch and bond extracted with spans, stored beside the requirements rather than among them. `allowed_branches`, `location` and the package figures are still absent — omitted, not guessed |
 | FR-2.6 | ⬜ | No role archetype inference |
 | FR-2.8 | ⬜ | No `CoveragePlan`, no question budget. This is the module's name |
 | FR-2.9 | ⬜ | Nothing guarantees a probe per `must` |
@@ -77,16 +77,19 @@ one table whose requirements are a flat `list[str]`:
 | FR-2.12 | ✅ | **Landed 2026-08-25.** Normalised (company, role, text) hash, looked up globally — the parse is shared, the gap is per-student. A hit answers 200 rather than 201 |
 | FR-2.13 | ⬜ | No M15 enrichment |
 | FR-2.14 | ⬜ | **P0.** Role-only mode does not exist |
-| FR-2.15 | ⬜ | Eligibility mismatch cannot be surfaced; it is not extracted |
+| FR-2.15 | 🟡 | The banner exists and STATES the bar. It does not say whether the student clears it — that needs their CGPA, which is M01's `entities.education.grade` |
 | FR-2.16 | ? | p95 never measured |
 
 ### 1.3 Three findings worth acting on before the FR list
 
-- ⬜ **Eligibility is thrown away, not extracted.** `_ELIGIBILITY` in
-      `extract.py` FILTERS OUT "7.0 CGPA", "2+ years", "B.Tech" — the exact
-      opposite of FR-2.4, and it makes FR-2.15 impossible. Its own comment says
-      these "belong in a structured eligibility field", so the intent is
-      recorded and the field is not built.
+- ✅ **Eligibility (2026-08-25).** The field its own comment promised now
+      exists. Keeping these OUT of the requirement list was always right; the
+      bug was keeping them nowhere.
+- ⬜ **The comparison, FR-2.15.** "You have 7.2, cutoff is 7.5" needs the
+      student's CGPA. M01 already extracts it (`entities.education.grade`) and
+      M02 does not read M01. Asserting a student falls short on a number this
+      module does not hold would be the worst thing here to be wrong about, so
+      the banner states the bar and stops.
 - ✅ **Spans (2026-08-25).** Every requirement carries an offset into
       `raw_text`, asserted at `-m gate` to resolve verbatim — a span that points
       at the wrong words is worse than no span, because it is a citation.

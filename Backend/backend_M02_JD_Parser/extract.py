@@ -69,7 +69,7 @@ import re
 from typing import Any
 
 from ai_core.concepts import normalise_alias
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 #: Longer than this and it is a sentence, not a skill. Five words admits
 #: "object oriented programming in java" and rejects a project bullet.
@@ -468,3 +468,149 @@ def locate(
         requirement.model_copy(update={"id": f"R-{position}"})
         for position, (_, requirement) in enumerate(found, start=1)
     ]
+
+
+# ---------------------------------------------------------------------------
+#  Eligibility (FR-2.4) — the half that was being thrown away
+# ---------------------------------------------------------------------------
+#
+# `_ELIGIBILITY` above is a REJECT filter: `_acceptable` uses it to keep "7.0
+# CGPA", "2+ years" and "B.Tech" out of the requirement list. That is right —
+# §3.2.2 is explicit that eligibility is a hard filter and not an interview
+# topic, and filing a CGPA cutoff under skills would put a number the ontology
+# can never resolve into the unmapped queue for ever.
+#
+# What was wrong is that the match was then DISCARDED. The comment beside the
+# regex says these "belong in a structured eligibility field", and the field did
+# not exist — so the module recognised the most consequential line in a job
+# posting and dropped it.
+#
+# The cost is FR-2.15's whole sentence: *"you have 7.2, cutoff is 7.5"*. A
+# student cannot be told they are ineligible for a drive by a module that never
+# kept the cutoff. §2.3 puts that banner at the top of the JD screen, and
+# students waste weeks preparing for drives they cannot sit.
+#
+# Every field is `None` when the posting does not say. Not zero, not a
+# permissive default: "this JD does not state a CGPA cutoff" and "this JD has no
+# cutoff" are different facts, and a `min_cgpa: 0.0` would tell a student they
+# are eligible for a drive nobody has checked them against.
+
+#: "CGPA of 7.5", "7.5 CGPA", "minimum 7.5 CGPA", "70%" — the shapes an Indian
+#: campus posting actually writes a cutoff in.
+_CGPA = re.compile(
+    r"(?:(?:min(?:imum)?|above|at\s+least|not\s+below)\s*)?"
+    r"(?:cgpa|gpa)\s*(?:of\s*|:\s*|-\s*|>=?\s*)?(?P<value>\d{1,2}(?:\.\d{1,2})?)"
+    r"|(?P<value2>\d{1,2}(?:\.\d{1,2})?)\s*(?:\+\s*)?(?:cgpa|gpa)",
+    re.IGNORECASE,
+)
+
+#: "no active backlogs", "zero backlogs", "at most 1 backlog".
+_BACKLOGS = re.compile(
+    r"(?P<none>no|zero|nil)\s+(?:active\s+|current\s+|standing\s+)?backlogs?"
+    r"|(?:at\s+most|maximum|max|up\s+to)\s*(?P<count>\d+)\s*(?:active\s+)?backlogs?",
+    re.IGNORECASE,
+)
+
+#: "2026 batch", "batch of 2026", "year of passing 2026".
+_BATCH = re.compile(
+    r"(?:batch\s+of\s+|year\s+of\s+passing\s*:?\s*|passing\s+out\s+in\s+)?(?P<year>20\d{2})\s*batch"
+    r"|batch\s+of\s+(?P<year2>20\d{2})"
+    r"|year\s+of\s+passing\s*:?\s*(?P<year3>20\d{2})",
+    re.IGNORECASE,
+)
+
+#: "2 year bond", "service agreement of 18 months".
+_BOND = re.compile(
+    r"(?P<years>\d{1,2})\s*[- ]?\s*year\s+(?:bond|service\s+agreement)"
+    r"|(?:bond|service\s+agreement)\s+(?:of\s+)?(?P<months>\d{1,3})\s*months?"
+    r"|(?P<years2>\d{1,2})\s*[- ]?\s*year\s+commitment",
+    re.IGNORECASE,
+)
+
+
+class EligibilityCriteria(BaseModel):
+    """The hard filters on who may sit this drive (§5, FR-2.4).
+
+    A PARTIAL §5 `EligibilityCriteria`. `allowed_branches`, `location` and the
+    two package figures are not extracted yet and are absent rather than
+    guessed — the same rule the `Requirement` fields follow.
+
+    `stated` is the field a screen branches on. Every value being `None` and
+    the posting genuinely having no cutoff look identical otherwise, and only
+    one of them means "we checked".
+    """
+
+    min_cgpa: float | None = None
+    max_backlogs_active: int | None = None
+    year_of_passing: list[int] = Field(default_factory=list)
+    bond_months: int | None = None
+    #: The lines these were read from, so a student can check the cutoff we are
+    #: about to tell them they miss.
+    raw_spans: list[SourceSpan] = Field(default_factory=list)
+
+    # `computed_field`, not a bare `@property`: pydantic does not serialise a
+    # plain property, so the frontend declared `stated: boolean` and would have
+    # received `undefined` — and `if (!eligibility.stated)` on undefined reads
+    # as "this drive states no cutoff", which is the one wrong answer this
+    # field exists to prevent.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def stated(self) -> bool:
+        return bool(
+            self.min_cgpa is not None
+            or self.max_backlogs_active is not None
+            or self.year_of_passing
+            or self.bond_months is not None
+        )
+
+
+def _span_at(text: str, match: re.Match[str]) -> SourceSpan:
+    return SourceSpan(start=match.start(), end=match.end(), text=match.group(0))
+
+
+def extract_eligibility(text: str) -> EligibilityCriteria:
+    """The eligibility block, kept instead of filtered out (FR-2.4).
+
+    Every span is recorded. A student told "you have 7.2, the cutoff is 7.5"
+    is being told something with real consequences, and the only honest version
+    of that sentence points at the line it came from.
+    """
+    criteria = EligibilityCriteria()
+    spans: list[SourceSpan] = []
+
+    match = _CGPA.search(text)
+    if match:
+        raw = match.group("value") or match.group("value2")
+        value = float(raw)
+        # A percentage cutoff written as "70%" is not a CGPA. Above 10 it is
+        # one or the other, and storing 70.0 in `min_cgpa` would tell every
+        # student on a 10-point scale that they are ineligible.
+        if value <= 10:
+            criteria.min_cgpa = value
+            spans.append(_span_at(text, match))
+
+    match = _BACKLOGS.search(text)
+    if match:
+        criteria.max_backlogs_active = 0 if match.group("none") else int(match.group("count"))
+        spans.append(_span_at(text, match))
+
+    years = {
+        int(year)
+        for match in _BATCH.finditer(text)
+        for year in (match.group("year"), match.group("year2"), match.group("year3"))
+        if year
+    }
+    if years:
+        criteria.year_of_passing = sorted(years)
+        spans.extend(_span_at(text, m) for m in _BATCH.finditer(text))
+
+    match = _BOND.search(text)
+    if match:
+        if match.group("months"):
+            criteria.bond_months = int(match.group("months"))
+        else:
+            criteria.bond_months = int(match.group("years") or match.group("years2")) * 12
+        spans.append(_span_at(text, match))
+
+    criteria.raw_spans = sorted(spans, key=lambda span: span.start)
+    return criteria

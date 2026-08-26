@@ -447,3 +447,88 @@ def test_the_flat_list_and_the_requirements_agree(client, m04):
     body = _parse_response(client).json()
 
     assert sorted(body["required_skills"]) == sorted(r["text"] for r in body["requirements"])
+
+
+# ---------------------------------------------------------------------------
+#  FR-2.4 — eligibility, kept instead of thrown away
+# ---------------------------------------------------------------------------
+
+ELIGIBLE_JD = """Software Engineer, Backend
+
+Eligibility: minimum 7.5 CGPA, no active backlogs, 2026 batch. 2 year bond.
+
+Requirements:
+- Python, SQL, Docker
+"""
+
+
+def test_eligibility_is_extracted_rather_than_discarded(client, m04):
+    """`_ELIGIBILITY` recognised these lines and threw them away.
+
+    Keeping them OUT of the requirement list is right — §3.2.2: a CGPA cutoff
+    is a hard filter, not an interview topic. Keeping them nowhere was the bug,
+    and it made FR-2.15's whole sentence impossible: a module that never stored
+    the cutoff cannot tell a student they miss it.
+    """
+    body = _parse_response(client, text=ELIGIBLE_JD).json()
+    eligibility = body["eligibility"]
+
+    assert eligibility["stated"] is True
+    assert eligibility["min_cgpa"] == 7.5
+    assert eligibility["max_backlogs_active"] == 0
+    assert eligibility["year_of_passing"] == [2026]
+    assert eligibility["bond_months"] == 24
+
+
+def test_eligibility_never_becomes_a_requirement(client, m04):
+    """The half that was already right, asserted so it stays right.
+
+    A CGPA cutoff filed under skills is a number the ontology can never resolve
+    sitting in the unmapped queue for ever — and a coverage plan allocating
+    interview questions to "7.5 CGPA".
+    """
+    body = _parse_response(client, text=ELIGIBLE_JD).json()
+
+    for label in body["required_skills"]:
+        assert "cgpa" not in label.lower()
+        assert "backlog" not in label.lower()
+        assert "batch" not in label.lower()
+
+
+def test_eligibility_spans_point_at_the_words_they_came_from(client, m04):
+    """A student told they miss a cutoff is being told something with real
+    consequences, and the only honest version points at the line."""
+    body = _parse_response(client, text=ELIGIBLE_JD).json()
+    raw = body["raw_text"]
+
+    spans = body["eligibility"]["raw_spans"]
+    assert spans
+    for span in spans:
+        assert raw[span["start"] : span["end"]] == span["text"]
+
+
+def test_a_posting_that_states_no_bar_says_so_rather_than_zero(client, m04):
+    """`stated: false`, not `min_cgpa: 0`.
+
+    "This JD does not state a cutoff" and "this JD has no cutoff" are different
+    facts. A permissive default would tell a student they are eligible for a
+    drive nobody has checked them against, which is the one wrong answer this
+    field exists to prevent.
+    """
+    body = _parse_response(client, text="Backend Engineer.\n\nRequirements:\n- Python, SQL\n").json()
+    eligibility = body["eligibility"]
+
+    assert eligibility["stated"] is False
+    assert eligibility["min_cgpa"] is None
+    assert eligibility["max_backlogs_active"] is None
+
+
+def test_a_percentage_cutoff_is_not_read_as_a_cgpa(client, m04):
+    """"70% throughout academics" is a real bar and it is not a CGPA.
+
+    Storing 70.0 in `min_cgpa` would tell every student on a ten-point scale
+    that they are ineligible.
+    """
+    body = _parse_response(client, text="Requires 70% throughout academics.\n").json()
+
+    assert body["eligibility"]["min_cgpa"] is None

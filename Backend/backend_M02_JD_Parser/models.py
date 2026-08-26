@@ -48,6 +48,15 @@ class JobDescription(SQLModel, table=True):
     #: contained.
     requirements: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
 
+    #: `EligibilityCriteria` (FR-2.4): the CGPA cutoff, backlog rule, batch and
+    #: bond, each with the line it was read from.
+    #:
+    #: These used to be RECOGNISED and thrown away — `_ELIGIBILITY` in
+    #: extract.py kept them out of the requirement list, correctly, and nothing
+    #: kept them anywhere else. FR-2.15's whole sentence is "you have 7.2,
+    #: cutoff is 7.5", and a module that never stored the cutoff cannot say it.
+    eligibility: dict = Field(default_factory=dict, sa_column=Column(JSON))
+
     #: skill_label -> concept_id. Only labels we have an id for; see
     #: `concept_source` for WHERE that id came from, which is not decoration:
     #: an id M04 resolved and an id an offline table guessed look identical

@@ -24,6 +24,7 @@ import { useCandidateId } from "./candidate-hook";
 import { CoveragePanel } from "./CoveragePanel";
 import { ScanSourceNote } from "./ConceptSourceChip";
 import { Empty, ErrorNote, Panel, Pill, Section, SkeletonRows } from "../ui/primitives";
+import type { EligibilityCriteria } from "../types";
 
 export function JdPage() {
   const { jdId } = useParams<{ jdId: string }>();
@@ -58,6 +59,8 @@ export function JdPage() {
           <ScanSourceNote scannedAgainst={data.scanned_against} />
         </div>
       </header>
+
+      <EligibilityBanner eligibility={data.eligibility} />
 
       <Section
         label="What this job asks for"
@@ -136,9 +139,10 @@ export function JdPage() {
               writes them.
             </p>
             <p>
-              Eligibility (CGPA cutoff, backlogs, bond) is also not extracted, so the banner §2.3
-              puts at the top of this screen is absent. That one has a real cost: students waste
-              weeks preparing for drives they are not eligible to sit.
+              Eligibility (CGPA cutoff, backlogs, batch, bond) IS extracted now and shows above.
+              What is still missing there is the comparison &mdash; FR-2.15&rsquo;s &ldquo;you have
+              7.2, cutoff is 7.5&rdquo; needs the student&rsquo;s own CGPA, which lives in M01,
+              so the banner states the bar rather than whether you clear it.
             </p>
           </div>
         </details>
@@ -180,4 +184,62 @@ function quote(text: string, span: { start: number; end: number }): string {
   const to = text.indexOf("\n", span.end);
   const line = text.slice(from, to === -1 ? undefined : to).trim();
   return line.length > 90 ? `${line.slice(0, 90)}…` : line;
+}
+
+/**
+ * The bar for sitting this drive, at the top of the screen (§2.3, FR-2.4).
+ *
+ * §2.3 puts this above the requirements for a reason a student feels directly:
+ * they waste weeks preparing for drives they are not eligible to sit. The
+ * module recognised these lines and threw them away, so the banner could not
+ * exist.
+ *
+ * It states the bar and does NOT say whether the student clears it. FR-2.15's
+ * sentence — "you have 7.2, cutoff is 7.5" — needs their CGPA, which is M01's
+ * (`entities.education.grade`), and asserting they fall short on a number this
+ * module does not hold would be the worst possible thing to be wrong about.
+ */
+function EligibilityBanner({ eligibility }: { eligibility: EligibilityCriteria }) {
+  // `stated` rather than checking the fields: "the posting says nothing about
+  // eligibility" and "we found nothing" look identical from the values alone,
+  // and only one of them means we looked.
+  if (!eligibility?.stated) return null;
+
+  const bars: string[] = [];
+  if (eligibility.min_cgpa !== null) bars.push(`CGPA ${eligibility.min_cgpa} or above`);
+  if (eligibility.max_backlogs_active !== null) {
+    bars.push(
+      eligibility.max_backlogs_active === 0
+        ? "no active backlogs"
+        : `at most ${eligibility.max_backlogs_active} active backlog${
+            eligibility.max_backlogs_active === 1 ? "" : "s"
+          }`,
+    );
+  }
+  if (eligibility.year_of_passing.length > 0) {
+    bars.push(`${eligibility.year_of_passing.join(", ")} batch`);
+  }
+  if (eligibility.bond_months !== null) {
+    bars.push(
+      eligibility.bond_months % 12 === 0
+        ? `${eligibility.bond_months / 12}-year bond`
+        : `${eligibility.bond_months}-month bond`,
+    );
+  }
+
+  return (
+    <div className="mb-7 rounded-md border border-reported-line bg-reported-soft px-4 py-3" role="note">
+      <p className="text-sm font-medium text-reported">Who can sit this drive</p>
+      <p className="mt-1 text-sm text-ink">{bars.join(" · ")}</p>
+      <p className="mt-2 text-xs text-ink-soft">
+        Read off the posting, not checked against you &mdash; your CGPA is not something this
+        screen holds. Check these before you spend a fortnight preparing.
+      </p>
+      {eligibility.raw_spans.length > 0 && (
+        <p className="provenance mt-1.5 break-words">
+          {eligibility.raw_spans.map((span) => `“${span.text}”`).join(" · ")}
+        </p>
+      )}
+    </div>
+  );
 }
