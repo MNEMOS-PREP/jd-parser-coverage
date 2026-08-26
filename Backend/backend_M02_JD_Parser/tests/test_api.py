@@ -216,3 +216,82 @@ def test_status_reports_the_platform_registry(client):
     assert body["id"] == "M02"
     assert body["implemented"] is True
     assert body["reserved_port"] == 8102
+
+
+# ---------------------------------------------------------------------------
+#  Extraction: what the JD asks for, before the ontology has an opinion
+#
+#  `test_unmappable_requirement_is_reported_not_scored` above asserts the right
+#  thing and used to pass for the wrong reason: it injects a concept INTO M04
+#  and then makes M04 fail to resolve it. That internal inconsistency was the
+#  only path by which the old extraction could report an unmappable
+#  requirement, because a label reached the resolver only by having come from
+#  the resolver. A requirement the ontology has never heard of — which is most
+#  of a real JD — could not get there.
+# ---------------------------------------------------------------------------
+
+
+def _parse(client, text):
+    return client.post(
+        "/v1/jds/parse",
+        json={"company_name": "X", "role_title": "Y", "raw_text": text},
+    ).json()
+
+
+def test_an_everyday_word_is_not_a_requirement(client, m04_mastery):
+    """The worst of the old failures, because it was wrong rather than thin.
+
+    "Solid" is an alias of SOLID Principles. Matched in running prose, a retail
+    sales posting that says in as many words that no engineering is required
+    yielded a software-design requirement — and a requirement invented from an
+    adjective does not stay cosmetic, because M05 selects questions from it.
+    """
+    m04_mastery(
+        {"measured": []}, extra_concepts=[{"name": "SOLID Principles", "aliases": ["solid"]}]
+    )
+    parsed = _parse(
+        client,
+        "We want a solid communicator with a solid track record in retail sales. "
+        "No engineering required.",
+    )
+
+    assert "SOLID Principles" not in parsed["required_skills"]
+    assert parsed["required_skills"] == []
+
+
+def test_requirements_outside_the_ontology_are_reported_not_dropped(client, m04_mastery):
+    """A real JD is mostly technologies, and the ontology holds none of them.
+
+    That is fine — but it has to arrive as "we cannot measure these", never as
+    a requirement list with everything quietly missing from it.
+    """
+    m04_mastery({"measured": []})
+    parsed = _parse(
+        client,
+        "Required: Python, Docker, Kubernetes, React.\nRecursion is a plus.",
+    )
+
+    for tech in ("Python", "Docker", "Kubernetes", "React"):
+        assert tech in parsed["required_skills"], tech
+        assert tech in parsed["unresolved_skills"], tech
+    # And the one thing the ontology does know still resolves.
+    assert "Recursion" in parsed["resolved_concepts"]
+
+
+def test_unmeasurable_requirements_reach_coverage(client, m04_mastery):
+    """The end of the chain: an unmappable requirement is stated on the
+    coverage report as untestable rather than scored as a gap or dropped."""
+    m04_mastery({"measured": []})
+    parsed = _parse(client, "Required: Python, Kubernetes.")
+    cov = client.get(f"/v1/jds/{parsed['id']}/coverage/{uuid.uuid4()}").json()
+
+    assert set(cov["unmeasurable"]) == {"Python", "Kubernetes"}
+    assert cov["states"]["Python"] == "unmeasurable"
+
+
+def test_qualifiers_are_stripped_from_the_requirement(client, m04_mastery):
+    """ "strong Python" is a claim about Python, not about strength."""
+    m04_mastery({"measured": []})
+    parsed = _parse(client, "Required: strong Python, hands-on Docker, experience with React.")
+
+    assert parsed["required_skills"] == ["Python", "Docker", "React"]

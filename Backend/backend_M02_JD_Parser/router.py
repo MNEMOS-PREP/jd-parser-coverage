@@ -11,19 +11,21 @@ narrows the SCOPE of what we show, never the quality, and never silently):
 """
 
 import json
-import re
 import urllib.request
 import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from ai_core.concepts import normalise_alias
 from ai_core.dependencies import DependencyRegistry, DependencyStatus
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session
 
 from backend_M02_JD_Parser.models import JobDescription
+
+from .extract import drop_redundant, extract_surface_forms, scan_prose
 
 router = APIRouter(prefix="/v1", tags=["M02 JD Parser & Coverage Planner"])
 
@@ -156,27 +158,46 @@ def parse_jd(payload: JdParseIn, session: Session = Depends(get_db)):
     if not concepts:
         concepts = FALLBACK_CONCEPTS
 
-    found_skills = set()
-    text_lower = payload.raw_text.lower()
-    for c in concepts:
-        names_to_check = [c["name"].lower()] + [a.lower() for a in c.get("aliases", [])]
-        for name in names_to_check:
-            if re.search(rf"\b{re.escape(name)}\b", text_lower):
-                found_skills.add(c["name"])
-                break
+    # ------------------------------------------------------------------
+    #  Read the job description, THEN resolve. The previous version walked
+    #  the ontology and matched it against the text, which had two failure
+    #  modes here and the second is the dangerous one:
+    #
+    #    · a JD listing Python, SQL, data structures, algorithms, Docker,
+    #      Kubernetes, Java and Go yielded one requirement — SQL Queries;
+    #    · "a solid communicator with a solid track record in retail sales,
+    #      no engineering required" yielded SOLID Principles, because "solid"
+    #      is an alias. A requirement invented from an adjective does not stay
+    #      cosmetic: downstream it selects interview questions.
+    #
+    #  See extract.py.
+    # ------------------------------------------------------------------
+    surface_forms = extract_surface_forms(payload.raw_text)
 
-    resolved = resolve_labels(sorted(found_skills))
+    # Concepts named in prose rather than enumerated. Ambiguous one-word
+    # aliases are excluded there — that is what closes the "solid" hole.
+    prose_hits = scan_prose(payload.raw_text, concepts)
+
+    labels: list[str] = []
+    seen: set[str] = set()
+    for label in [*surface_forms, *sorted(prose_hits)]:
+        key = normalise_alias(label)
+        if key and key not in seen:
+            seen.add(key)
+            labels.append(label)
+
+    resolved = resolve_labels(labels)
 
     concepts_by_label: dict[str, str] = {}
     concept_source: dict[str, str] = {}
     unresolved: list[str] = []
-    for label in sorted(found_skills):
+    for label in labels:
         concept_id = resolved.get(label)
         if concept_id:
             concepts_by_label[label] = str(concept_id)
             concept_source[label] = "m04"
             continue
-        guess = FALLBACK_RESOLUTIONS.get(label.lower())
+        guess = FALLBACK_RESOLUTIONS.get(normalise_alias(label))
         if guess:
             # Usable, and marked. M04 has not confirmed this id exists.
             concepts_by_label[label] = guess
@@ -184,11 +205,18 @@ def parse_jd(payload: JdParseIn, session: Session = Depends(get_db)):
         else:
             unresolved.append(label)
 
+    unresolved = drop_redundant(unresolved, list(concepts_by_label))
+    # Everything the JD asks for, mapped or not, in the order it asks. An
+    # unmapped requirement is still a requirement — coverage reports it as
+    # `unmeasurable` rather than dropping it, which is the only honest answer
+    # to "does this candidate meet the bar" when we cannot test the bar.
+    required = [label for label in labels if label in concepts_by_label or label in unresolved]
+
     jd = JobDescription(
         company_name=payload.company_name,
         role_title=payload.role_title,
         raw_text=payload.raw_text,
-        required_skills=sorted(found_skills),
+        required_skills=required,
         resolved_concepts=concepts_by_label,
         concept_source=concept_source,
         unresolved_skills=unresolved,

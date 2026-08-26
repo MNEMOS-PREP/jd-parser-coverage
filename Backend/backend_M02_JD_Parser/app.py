@@ -15,11 +15,13 @@ log = logging.getLogger("uvicorn.error")
 DATABASE_URL = "sqlite:///dev_m02.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     SQLModel.metadata.create_all(engine)
     log.info("M02 database tables created.")
     yield
+
 
 app = FastAPI(title="M02 — JD Parser & Coverage Planner", version="0.1.0", lifespan=lifespan)
 
@@ -32,6 +34,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
 
 @app.get("/status", response_model=ModuleStatus, tags=["meta"])
 def status() -> ModuleStatus:

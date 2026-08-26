@@ -13,5 +13,9 @@ export { M02_NAV } from "./nav";
 export { AppShell } from "./ui/AppShell";
 export { CoveragePanel } from "./components/CoveragePanel";
 export { ConceptSourceChip, ScanSourceNote } from "./components/ConceptSourceChip";
+// Mounted by name in the platform shell, which owns "/" and cannot take a
+// second index route. Standalone still routes to them through m02Routes.
+export { ParsePage } from "./components/ParsePage";
+export { JdPage } from "./components/JdPage";
 export { useCoverage, useJd, useParseJd, useDeps } from "./api";
 export type { Coverage, GapState, JobDescription, ConceptSource } from "./types";
