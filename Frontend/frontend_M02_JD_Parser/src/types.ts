@@ -141,14 +141,24 @@ export interface JobDescription {
 }
 
 /**
- * The five gap states.
+ * The six gap states.
  *
  * `not_measured` is M02's spec word (§6.5) for what the platform's MasteryBar
  * calls `not_tested`. Same fact, two vocabularies, and the mapping lives in
  * one place — `CoverageRow` — rather than being re-derived per screen.
  */
 export type GapState =
-  "strong" | "adequate" | "weak" | "not_measured" | "unmeasurable";
+  | "strong"
+  | "adequate"
+  | "weak"
+  | "not_measured"
+  | "unmeasurable"
+  /**
+   * The posting offered a choice and another answer met it (FR-2.3). Not a
+   * gap and not silence: "Java or Python" is satisfied by Python, and the
+   * student needs to see that Java was asked about and is accounted for.
+   */
+  | "met_by_alternative";
 
 export interface Coverage {
   jd_id: string;
@@ -166,6 +176,8 @@ export interface Coverage {
   states: Record<string, GapState>;
   mastery: Record<string, number | null>;
   gap_severity: Record<string, number>;
+  /** label -> the alternative that met the same requirement. */
+  met_by_alternative: Record<string, string>;
   /** skill label -> concept_id, for the labels that resolved. */
   resolved_concepts: Record<string, string>;
   concept_source: Record<string, ConceptSource>;

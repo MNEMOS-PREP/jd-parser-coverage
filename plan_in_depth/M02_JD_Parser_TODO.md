@@ -139,6 +139,15 @@ one table whose requirements are a flat `list[str]`:
       time. Whole-word containment now. **The same line was in M01** — same
       function, copied — where it was live against M04 and silently removing
       skills from students' own resumes. Fixed in both, tested in both.
+- ✅ **The choice reaches the score.** Groups existed in the parse but
+      coverage still counted each alternative as its own demand, so a student
+      strong in Python was marked weak on Java and had their coverage score
+      lowered for an alternative the posting never required them to take —
+      §3.2.1's "33% qualified", arriving at the one number the student reads.
+      The best-placed alternative now represents the group; the others are
+      `met_by_alternative`, which is neither a gap nor silence, and the screen
+      says "not needed — the posting accepted Python" rather than dropping the
+      row. Two weak answers are still a gap, reported once.
 - ✅ **A field-level contract gate.** The route↔client and hook↔screen
       gates do not notice the drift that happens most: the backend grows a
       field and no frontend type mentions it, so nothing renders it and every

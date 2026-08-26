@@ -443,6 +443,57 @@ def get_jd_coverage(jd_id: uuid.UUID, candidate_id: uuid.UUID, session: Session 
             states[label] = "adequate" if mastery_p < ADEQUATE_BELOW else "strong"
             gap_severity[label] = max(0.0, 1.0 - mastery_p)
 
+    # ------------------------------------------------------------------
+    #  A choice is met by ONE of its answers (FR-2.3, FR-2.7)
+    # ------------------------------------------------------------------
+    #  Everything above treats each label as its own demand, which is right for
+    #  almost all of them and wrong for exactly the case §3.2.1 is about. A
+    #  posting that says "Java or Python" is satisfied by Python, and a student
+    #  strong in Python was being marked weak on Java and having their score
+    #  lowered for it — the "33% qualified" reading, arriving at the one number
+    #  the student actually reads.
+    #
+    #  The best-placed alternative represents the group. The others are not
+    #  gaps and are not silence either: `met_by_alternative` says the posting
+    #  asked and this student answered it another way, which is a different
+    #  fact from "not measured" and has to look different.
+    label_by_requirement = {
+        requirement["id"]: requirement["text"] for requirement in (jd.requirements or [])
+    }
+    buckets = (covered, weak, not_measured, unmeasurable)
+
+    def _standing(label: str) -> tuple[int, float]:
+        """How well this alternative is doing. Higher is better."""
+        rank = {
+            "strong": 4,
+            "adequate": 3,
+            "weak": 2,
+            "not_measured": 1,
+            "unmeasurable": 0,
+        }.get(states.get(label, "unmeasurable"), 0)
+        return rank, mastery_by_label.get(label) or 0.0
+
+    met_by_alternative: dict[str, str] = {}
+    for group in jd.requirement_groups or []:
+        members = [
+            label_by_requirement.get(requirement_id)
+            for requirement_id in group.get("requirement_ids", [])
+        ]
+        members = [label for label in members if label and label in states]
+        if len(members) < 2:
+            continue
+
+        best = max(members, key=_standing)
+        for label in members:
+            if label == best:
+                continue
+            states[label] = "met_by_alternative"
+            met_by_alternative[label] = best
+            gap_severity.pop(label, None)
+            for bucket in buckets:
+                if label in bucket:
+                    bucket.remove(label)
+
     measured_count = len(covered) + len(weak)
     coverage_score = (len(covered) / measured_count) if measured_count else None
 
@@ -460,6 +511,9 @@ def get_jd_coverage(jd_id: uuid.UUID, candidate_id: uuid.UUID, session: Session 
         "states": states,
         "mastery": mastery_by_label,
         "gap_severity": gap_severity,
+        # label -> the alternative that met the same requirement. A student
+        # asking "why is nothing being said about Java?" gets an answer.
+        "met_by_alternative": met_by_alternative,
         # The ids themselves, so a caller can show WHICH concept a
         # requirement was matched to alongside where that id came from.
         "resolved_concepts": jd.resolved_concepts,

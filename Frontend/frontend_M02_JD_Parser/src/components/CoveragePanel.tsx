@@ -35,29 +35,66 @@ import { ConceptSourceChip } from "./ConceptSourceChip";
  * has no counterpart: it is outside the scale, not a point on it, so it never
  * reaches `MasteryBar`.
  */
-const TO_MASTERY_STATE: Record<Exclude<GapState, "unmeasurable">, MasteryState> = {
+const TO_MASTERY_STATE: Record<
+  Exclude<GapState, "unmeasurable" | "met_by_alternative">,
+  MasteryState
+> = {
   strong: "strong",
   adequate: "adequate",
   weak: "weak",
   not_measured: "not_tested",
 };
 
-function CoverageRow({ label, coverage }: { label: string; coverage: Coverage }) {
+function CoverageRow({
+  label,
+  coverage,
+}: {
+  label: string;
+  coverage: Coverage;
+}) {
   const state = coverage.states[label];
   const conceptId = coverage.resolved_concepts[label];
 
   /* A requirement nothing can score. Hatched, colourless, no bar at all — it
      is not at the bottom of the scale, it is off it. Spec EC-2.8. */
+  /* One answer to a question that accepted several. No bar: the student is
+     not at some point on this scale, the requirement is simply already met. */
+  if (state === "met_by_alternative") {
+    const by = coverage.met_by_alternative[label];
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="inline-block h-2.5 w-10 shrink-0 rounded-sm bg-line"
+            aria-hidden
+          />
+          <span className="truncate text-sm text-ink-soft">{label}</span>
+        </div>
+        <span className="text-xs text-ink-faint">
+          not needed &mdash; the posting accepted {by}
+        </span>
+      </div>
+    );
+  }
+
   if (state === "unmeasurable") {
     return (
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="untestable-mark inline-block h-2.5 w-10 shrink-0" aria-hidden />
+          <span
+            className="untestable-mark inline-block h-2.5 w-10 shrink-0"
+            aria-hidden
+          />
           <span className="truncate text-sm text-ink">{label}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-ink-faint">can&rsquo;t be tested here</span>
-          <Pill tone="neutral" title="This requirement maps to no concept in the ontology, so no question can probe it and no score can be earned against it.">
+          <span className="text-xs text-ink-faint">
+            can&rsquo;t be tested here
+          </span>
+          <Pill
+            tone="neutral"
+            title="This requirement maps to no concept in the ontology, so no question can probe it and no score can be earned against it."
+          >
             unmapped
           </Pill>
         </div>
@@ -82,7 +119,10 @@ function CoverageRow({ label, coverage }: { label: string; coverage: Coverage })
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 py-2.5">
       <div className="flex min-w-0 items-center gap-2">
         <span className="truncate text-sm text-ink">{label}</span>
-        <ConceptSourceChip source={coverage.concept_source[label]} conceptId={conceptId} />
+        <ConceptSourceChip
+          source={coverage.concept_source[label]}
+          conceptId={conceptId}
+        />
       </div>
       <div className="flex items-center gap-3">
         <MasteryBar value={value} width="w-32" />
@@ -102,7 +142,12 @@ function CoverageRow({ label, coverage }: { label: string; coverage: Coverage })
  *   measured            a real fraction, over what could actually be checked.
  */
 function Headline({ coverage }: { coverage: Coverage }) {
-  const { coverage_score, measured_against, measured_count, requirement_count } = coverage;
+  const {
+    coverage_score,
+    measured_against,
+    measured_count,
+    requirement_count,
+  } = coverage;
 
   if (coverage_score === null) {
     const reason =
@@ -114,12 +159,13 @@ function Headline({ coverage }: { coverage: Coverage }) {
         <p className="text-sm font-medium text-ink">Not measured yet</p>
         <p className="mt-1 max-w-xl text-sm text-ink-soft">
           {reason} The {requirement_count} requirement
-          {requirement_count === 1 ? "" : "s"} below came out of the job description and are
-          correct; what is missing is where <em>you</em> stand against them.
+          {requirement_count === 1 ? "" : "s"} below came out of the job
+          description and are correct; what is missing is where <em>you</em>{" "}
+          stand against them.
         </p>
         <p className="mt-1.5 text-xs text-ink-faint">
-          This is not a score of zero. A first session maps your baseline and every row below
-          fills in.
+          This is not a score of zero. A first session maps your baseline and
+          every row below fills in.
         </p>
       </div>
     );
@@ -141,9 +187,12 @@ function Headline({ coverage }: { coverage: Coverage }) {
         {unmeasured > 0 && (
           <>
             {" "}
-            The other {unmeasured} {unmeasured === 1 ? "is" : "are"} not measured and{" "}
-            <strong className="font-medium text-ink">not counted against you</strong> &mdash; they
-            are topics to probe, not gaps.
+            The other {unmeasured} {unmeasured === 1 ? "is" : "are"} not
+            measured and{" "}
+            <strong className="font-medium text-ink">
+              not counted against you
+            </strong>{" "}
+            &mdash; they are topics to probe, not gaps.
           </>
         )}
       </p>
@@ -161,6 +210,11 @@ export function CoveragePanel({ coverage }: { coverage: Coverage }) {
     ...coverage.not_measured,
     ...coverage.covered,
     ...coverage.unmeasurable,
+    /* Alternatives another answer already met. They belong at the bottom
+       because they need no work — but they belong ON the page, because the
+       backend removes them from every gap bucket and a requirement that
+       simply stops appearing is indistinguishable from one we forgot. */
+    ...Object.keys(coverage.met_by_alternative),
   ];
 
   return (
@@ -173,7 +227,11 @@ export function CoveragePanel({ coverage }: { coverage: Coverage }) {
 
       <Section
         label="Where you stand"
-        meta={coverage.measured_against ? `measured against ${coverage.measured_against}` : "not measured"}
+        meta={
+          coverage.measured_against
+            ? `measured against ${coverage.measured_against}`
+            : "not measured"
+        }
       >
         <Headline coverage={coverage} />
 
@@ -188,10 +246,11 @@ export function CoveragePanel({ coverage }: { coverage: Coverage }) {
         {coverage.unmeasurable.length > 0 && (
           <p className="mt-2.5 text-xs text-ink-soft">
             {coverage.unmeasurable.length} requirement
-            {coverage.unmeasurable.length === 1 ? "" : "s"} map to no concept in the ontology, so
-            no question can probe {coverage.unmeasurable.length === 1 ? "it" : "them"}. They are
-            listed rather than dropped, because a requirement we cannot test is still one the job
-            asks for.
+            {coverage.unmeasurable.length === 1 ? "" : "s"} map to no concept in
+            the ontology, so no question can probe{" "}
+            {coverage.unmeasurable.length === 1 ? "it" : "them"}. They are
+            listed rather than dropped, because a requirement we cannot test is
+            still one the job asks for.
           </p>
         )}
       </Section>

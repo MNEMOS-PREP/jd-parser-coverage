@@ -877,3 +877,85 @@ def test_a_shorter_name_inside_a_longer_one_is_a_different_technology(client, m0
     texts = [r["text"] for r in body["requirements"]]
 
     assert "SQL" in texts and "NoSQL" in texts
+
+
+def test_a_choice_is_met_by_one_of_its_answers(client, m04_mastery):
+    """§3.2.1's "33% qualified", arriving at the one number the student reads.
+
+    The posting says "Dynamic Programming or Recursion". This student is strong
+    on Dynamic Programming and weak on Recursion. Before groups existed both
+    were scored as separate demands, so the alternative they did not take
+    counted against them: 1 covered out of 2 measured, a coverage score of 0.5
+    for a requirement they fully meet.
+
+    Recursion is not a gap here, and it is not silence either —
+    `met_by_alternative` names the answer that satisfied the same requirement,
+    so "why is nothing being said about Recursion" has an answer on screen.
+    """
+    m04_mastery(
+        {
+            "measured": [
+                {"concept_id": "concept:dynamic_programming", "mastery_p": 0.85},
+                {"concept_id": "concept:recursion", "mastery_p": 0.15},
+                {"concept_id": "concept:sql_basics", "mastery_p": 0.90},
+            ]
+        }
+    )
+    res = client.post(
+        "/v1/jds/parse",
+        json={
+            "company_name": "Acme",
+            "role_title": "Engineer",
+            "raw_text": (
+                "Engineer\n\nRequirements:\n"
+                "- Dynamic Programming or Recursion\n"
+                "- SQL\n"
+            ),
+        },
+    )
+    assert res.status_code == 201, res.text
+    jd_id = res.json()["id"]
+
+    cov = client.get(f"/v1/jds/{jd_id}/coverage/{uuid.uuid4()}").json()
+
+    assert cov["states"]["Dynamic Programming"] == "strong"
+    assert cov["states"]["Recursion"] == "met_by_alternative"
+    assert cov["met_by_alternative"]["Recursion"] == "Dynamic Programming"
+
+    # The alternative not taken is not a gap, and does not sit in the divisor.
+    assert "Recursion" not in cov["weak"]
+    assert "Recursion" not in cov["gap_severity"]
+    assert cov["measured_count"] == 2
+    assert cov["coverage_score"] == 1.0
+
+
+def test_a_choice_nobody_answered_is_still_a_gap(client, m04_mastery):
+    """The group must not become a way to hide a miss.
+
+    Weak on both alternatives is weak on the requirement. One of them carries
+    that — the better-placed one — so the gap is reported once rather than
+    twice, which is the only thing the group changes here.
+    """
+    m04_mastery(
+        {
+            "measured": [
+                {"concept_id": "concept:dynamic_programming", "mastery_p": 0.20},
+                {"concept_id": "concept:recursion", "mastery_p": 0.10},
+            ]
+        }
+    )
+    res = client.post(
+        "/v1/jds/parse",
+        json={
+            "company_name": "Acme",
+            "role_title": "Engineer",
+            "raw_text": "Engineer\n\nRequirements:\n- Dynamic Programming or Recursion\n",
+        },
+    )
+    jd_id = res.json()["id"]
+    cov = client.get(f"/v1/jds/{jd_id}/coverage/{uuid.uuid4()}").json()
+
+    # The stronger of two weak answers represents the group, and is still weak.
+    assert cov["weak"] == ["Dynamic Programming"]
+    assert cov["states"]["Recursion"] == "met_by_alternative"
+    assert cov["coverage_score"] == 0.0
