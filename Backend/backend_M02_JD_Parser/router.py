@@ -19,7 +19,8 @@ from typing import Any
 
 from ai_core.concepts import normalise_alias
 from ai_core.dependencies import DependencyRegistry, DependencyStatus
-from fastapi import APIRouter, Depends, HTTPException, status
+from ai_core.identity import Principal, may_see, principal_from_headers
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlmodel import Session
 
@@ -27,7 +28,55 @@ from backend_M02_JD_Parser.models import JobDescription
 
 from .extract import drop_redundant, extract_surface_forms, scan_prose
 
-router = APIRouter(prefix="/v1", tags=["M02 JD Parser & Coverage Planner"])
+
+def get_db():
+    from backend_M02_JD_Parser.app import engine
+
+    with Session(engine) as session:
+        yield session
+
+
+def enforce_access(request: Request) -> Principal | None:
+    """Who is asking, and may they have what this route is about?
+
+    Declared once, on the ROUTER, so it runs on every endpoint in this module
+    including the ones nobody has written yet. `ai_core.identity` makes the
+    check one call precisely because a per-route check is the one somebody
+    omits on the sixteenth endpoint, and the sixteenth endpoint is the one that
+    leaks. A router-level dependency cannot be omitted by forgetting.
+
+    ── What is candidate-scoped here, and what is not ──────────────────────────
+
+    Only `candidate_id`. A JOB DESCRIPTION is not personal data — it is a public
+    posting a company wrote, and two students preparing for the same drive
+    should share one parse rather than each holding a private copy of a public
+    document (FR-2.12 makes that explicit by caching across students). So
+    `/jds/parse` and `/jds/{id}` stay open.
+
+    `/jds/{id}/coverage/{candidate_id}` is the opposite: it is a gap analysis of
+    one named student against that posting, and it answered for anybody who
+    guessed a UUID.
+    """
+    principal = principal_from_headers(dict(request.headers))
+
+    candidate_id = request.path_params.get("candidate_id")
+    if candidate_id is None:
+        return principal
+
+    decision = may_see(principal, str(candidate_id))
+    if not decision:
+        # 403 with the reason, not 404. Pretending the record does not exist
+        # would be a lie to the student it is about.
+        raise HTTPException(status_code=403, detail=decision.reason)
+
+    return principal
+
+
+router = APIRouter(
+    prefix="/v1",
+    tags=["M02 JD Parser & Coverage Planner"],
+    dependencies=[Depends(enforce_access)],
+)
 
 _MANIFEST = Path(__file__).resolve().parents[2] / "module.json"
 
@@ -40,13 +89,6 @@ ADEQUATE_BELOW = 0.70
 #: failed. Spec §6.5: not_measured carries severity weight × 0.6 — we do not
 #: know, so we should probe — rather than the 1.0 that "missing" implied.
 NOT_MEASURED_SEVERITY = 0.6
-
-
-def get_db():
-    from backend_M02_JD_Parser.app import engine
-
-    with Session(engine) as session:
-        yield session
 
 
 @lru_cache(maxsize=1)

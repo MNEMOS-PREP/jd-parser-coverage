@@ -14,6 +14,8 @@
  * auth lands — this file is the only place that has to change.
  */
 
+import { setIdentityHeaders } from "@ai/core";
+
 const KEY = "m02.candidateId";
 
 /** M01's first seeded candidate. Deliberately shared across the module seeds. */
@@ -38,8 +40,35 @@ export function setCandidateId(next: string): void {
   if (trimmed === current) return;
   current = trimmed || DEFAULT_CANDIDATE_ID;
   window.localStorage.setItem(KEY, current);
+  publishIdentity();
   listeners.forEach((listener) => listener());
 }
+
+/** The headers a raw `fetch` has to send for itself. See `api.ts`. */
+export function identityHeaders(): Record<string, string> {
+  return { "X-Role": "student", "X-Candidate-Id": current };
+}
+
+/**
+ * Tell `@ai/core` who the browser is.
+ *
+ * The backend resolves a caller through `ai_core.identity` and answers 403 for
+ * `/coverage/{candidate_id}` without one, so this is what keeps the panel
+ * working — and, more to the point, what makes "this is YOUR gap analysis"
+ * true rather than assumed.
+ *
+ * This is the DEV shape: a header naming the candidate, honoured only under
+ * `AI_AUTH_MODE=dev`. It is the same trust this control always had — the id
+ * was already whatever you typed — except that it now has one name, is refused
+ * in production, and the swap for a real session is one call in this file,
+ * which is what the note at the top of it has always promised.
+ */
+export function publishIdentity(): void {
+  setIdentityHeaders(identityHeaders());
+}
+
+// At module load, before any screen has rendered or fetched.
+publishIdentity();
 
 export function subscribeCandidateId(listener: () => void): () => void {
   listeners.add(listener);

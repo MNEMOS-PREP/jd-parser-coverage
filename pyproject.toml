@@ -11,7 +11,7 @@ dependencies = [
     "fastapi>=0.115",
     "sqlmodel>=0.0.22",
     "uvicorn[standard]>=0.30",
-    "ai-core @ git+https://github.com/MNEMOS-PREP/Platform_Core@v0.6.0#subdirectory=python",
+    "ai-core @ git+https://github.com/MNEMOS-PREP/Platform_Core@v0.9.1#subdirectory=python",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +29,9 @@ namespaces = false
 [tool.pytest.ini_options]
 pythonpath = ["Backend"]
 testpaths = ["Backend/backend_M02_JD_Parser"]
+markers = [
+    "gate: release-blocking acceptance gate (spec §13)",
+]
 
 [tool.ruff]
 line-length = 100
