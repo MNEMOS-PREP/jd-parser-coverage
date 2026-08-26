@@ -148,6 +148,22 @@ one table whose requirements are a flat `list[str]`:
       `met_by_alternative`, which is neither a gap nor silence, and the screen
       says "not needed — the posting accepted Python" rather than dropping the
       row. Two weak answers are still a gap, reported once.
+- ✅ **`- Strong programming skills in Java or Python` extracted nothing.**
+      Found by parsing an ordinary campus posting and reading the output: the
+      most important line on it was simply absent. `_clean` leaves six words,
+      `_acceptable` refuses that for the word cap, and extraction bailed on the
+      fragment before trying its conjunction parts — so both alternatives went
+      with it. The same shape as the bullet-length bug, one level further in.
+      Parts are now tried on over-long fragments, but only those that look like
+      a NAME: the first attempt at this invented a skill called "enjoys
+      mentoring juniors", and recovering a real requirement is not worth
+      inventing one.
+- ✅ **"Familiarity with Git" was a nice-to-have.** `_COULD` matched
+      "familiarity with", "exposure to" and "awareness of", which describe
+      DEPTH rather than optionality. A requirement stated under a Requirements
+      heading landed in the could band and earned a third of the interview time
+      the posting asked for. The heading decides now; under "Nice to have:" the
+      same words are still a `could`.
 - ✅ **A field-level contract gate.** The route↔client and hook↔screen
       gates do not notice the drift that happens most: the backend grows a
       field and no frontend type mentions it, so nothing renders it and every

@@ -959,3 +959,70 @@ def test_a_choice_nobody_answered_is_still_a_gap(client, m04_mastery):
     assert cov["weak"] == ["Dynamic Programming"]
     assert cov["states"]["Recursion"] == "met_by_alternative"
     assert cov["coverage_score"] == 0.0
+
+
+def test_a_requirement_inside_an_over_long_line_is_not_lost(client, m04):
+    """`- Strong programming skills in Java or Python` yielded NOTHING.
+
+    Found by parsing an ordinary campus posting and reading the output: the
+    single most important line on it was absent. `_clean` leaves six words,
+    `_acceptable` refuses that for the word cap, and `extract_surface_forms`
+    bailed on the fragment before ever trying its conjunction parts — so both
+    alternatives went with it.
+
+    Same shape as the bullet-length bug: a cap applied one level too high
+    throws away the thing it was meant to filter around.
+    """
+    body = _parsed(
+        client,
+        "Backend Engineer\n\nRequirements:\n- Strong programming skills in Java or Python\n",
+    )
+    texts = [r["text"] for r in body["requirements"]]
+
+    assert "Java" in texts and "Python" in texts
+    # And it is a choice, not two demands.
+    assert body["requirement_groups"][0]["requirement_ids"] == ["R-1", "R-2"]
+
+
+def test_rescuing_a_requirement_does_not_invent_one(client, m04):
+    """The first attempt at the fix above created a skill called
+    "enjoys mentoring juniors".
+
+    Splitting an over-long fragment on "and" cuts prose into pieces that are
+    short enough to pass the cap. Recovering a real requirement is not worth
+    inventing one — a missed requirement shows up as a thin list, an invented
+    one becomes an interview question about something nobody asked for.
+
+    So a part rescued from an over-long fragment has to look like a NAME.
+    Postings capitalise their technologies; prose about attitude does not.
+    """
+    body = _parsed(
+        client,
+        "Backend Engineer\n\nRequirements:\n"
+        "- We are looking for someone who thrives in ambiguity and enjoys mentoring juniors\n",
+    )
+
+    assert body["required_skills"] == []
+
+
+def test_familiarity_describes_depth_not_optionality(client, m04):
+    """"Familiarity with Git" under Requirements is required, shallowly.
+
+    `_COULD` matched "familiarity with", so a stated requirement landed in the
+    nice-to-have band and earned a third of the weight — a third of the
+    interview time — that the posting asked for. The words describe how deeply
+    the student needs to know it, not whether they need to.
+
+    The heading is what decides, and under "Nice to have:" the same words are
+    a `could`, which is the case §3.2.1 is actually about.
+    """
+    body = _parsed(
+        client,
+        "Backend Engineer\n\nRequirements:\n- Familiarity with Git\n\n"
+        "Nice to have:\n- Familiarity with Docker\n",
+    )
+    by_text = {r["text"]: r for r in body["requirements"]}
+
+    assert by_text["Git"]["necessity"] == "must"
+    assert by_text["Docker"]["necessity"] == "could"
+    assert by_text["Git"]["weight"] > by_text["Docker"]["weight"]

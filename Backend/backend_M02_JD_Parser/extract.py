@@ -136,7 +136,10 @@ _LEADING_NOISE = re.compile(
     r"working|solid\s+grasp\s+of|hands[-\s]?on|proficiency\s+(?:in|with)|"
     r"proficient\s+(?:in|with)|experience\s+(?:with|in|of)|familiarity\s+with|"
     r"knowledge\s+of|understanding\s+of|exposure\s+to|expertise\s+in|"
-    r"comfortable\s+with|fluent\s+in|grasp\s+of)\s+",
+    r"comfortable\s+with|fluent\s+in|grasp\s+of|"
+    # "programming skills in Java", "coding skills with Python". The run-up is
+    # about the student's relationship to the thing; the thing is the label.
+    r"(?:\w+\s+)?skills?\s+(?:in|with)|(?:\w+\s+)?background\s+(?:in|with))\s+",
     re.IGNORECASE,
 )
 
@@ -229,7 +232,11 @@ def _split_conjunctions(label: str) -> list[str]:
     parts = re.split(r"\s+(?:and|or)\s+", label, flags=re.IGNORECASE)
     if len(parts) < 2:
         return []
-    return [p.strip() for p in parts if p.strip() and len(p.split()) <= 3]
+    # Cleaned BEFORE the length cap. "programming skills in Java" is four words
+    # and was dropped for it; the four words are a run-up to one, and peeling
+    # the run-up first is the difference between extracting Java and losing it.
+    cleaned = [_clean(part) for part in parts]
+    return [part for part in cleaned if part and len(part.split()) <= 3]
 
 
 #: A line that opens with a list glyph. §3.2.2 of M01's spec calls bullet
@@ -315,11 +322,34 @@ def extract_surface_forms(text: str) -> list[str]:
     for line in _list_lines(text):
         for fragment in _DELIMITERS.split(line):
             cleaned = _clean(fragment)
-            if not _acceptable(cleaned):
+            if _acceptable(cleaned):
+                add(cleaned)
+                for part in _split_conjunctions(cleaned):
+                    add(part)
                 continue
-            add(cleaned)
+
+            # Too long to BE a label, which does not mean it contains none.
+            # `- Strong programming skills in Java or Python` cleans to six
+            # words, `_acceptable` refuses it for the cap, and both
+            # alternatives went with it — the single most important line on the
+            # posting, gone.
+            #
+            # But this is also where prose lives, and the first attempt at this
+            # turned "…thrives in ambiguity and enjoys mentoring juniors" into
+            # a skill called "enjoys mentoring juniors". Recovering a real
+            # requirement is not worth inventing one; that trade is the wrong
+            # way round and this module says so everywhere else.
+            #
+            # So a part rescued from an over-long fragment must look like a
+            # NAME rather than a phrase. Postings capitalise their
+            # technologies — Java, Python, REST, Kubernetes, C++ — and prose
+            # about attitude does not. Lowercase skills in a long sentence are
+            # lost, which is the conservative direction: a requirement we
+            # missed is visible as a thin list, and one we invented becomes an
+            # interview question about something nobody asked for.
             for part in _split_conjunctions(cleaned):
-                add(part)
+                if any(character.isupper() for character in part):
+                    add(part)
 
     return forms
 
@@ -645,10 +675,16 @@ _MUST = re.compile(
 )
 
 #: Language that makes it explicitly optional.
+#:
+#: "familiarity with", "exposure to" and "awareness of" are deliberately NOT
+#: here. They describe DEPTH, not optionality: "Familiarity with Git" under a
+#: Requirements heading is required — shallowly — and reading it as a bonus
+#: drops a stated requirement into the nice-to-have band, where it earns a
+#: third of the interview time it should. The heading decides: under "Nice to
+#: have:" the same words are a `could`, which is the case §3.2.1 is about.
 _COULD = re.compile(
     r"\b(?:nice\s+to\s+have|good\s+to\s+have|a\s+plus|is\s+a\s+plus|bonus|"
-    r"desirable|preferred|optional|advantage|would\s+be\s+(?:great|nice)|"
-    r"exposure\s+to|familiarity\s+with|awareness\s+of)\b",
+    r"desirable|preferred|optional|advantage|would\s+be\s+(?:great|nice))\b",
     re.IGNORECASE,
 )
 
