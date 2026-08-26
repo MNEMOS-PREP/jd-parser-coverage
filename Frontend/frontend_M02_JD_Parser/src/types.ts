@@ -43,6 +43,21 @@ export interface SourceSpan {
  */
 export type Necessity = "must" | "should" | "could";
 
+/**
+ * §5's `RequirementGroup`. Only `any_of` is ever emitted: `all_of` is the
+ * default and would carry no information, and no posting seen so far writes
+ * "at least two of".
+ */
+export interface RequirementGroup {
+  id: string;
+  satisfaction: "any_of" | "all_of" | "n_of";
+  /** `Requirement.id`s. Two or more — a group of one is not a choice. */
+  requirement_ids: string[];
+  /** The words the disjunction was written as, e.g. "Docker or Kubernetes". */
+  text: string;
+  span: SourceSpan | null;
+}
+
 export interface Requirement {
   id: string;
   text: string;
@@ -58,6 +73,11 @@ export interface Requirement {
   weight: number;
   /** How many times the posting names it. Repetition is emphasis (§6.4). */
   mentions: number;
+  /**
+   * The `RequirementGroup` this is one alternative of, or `null` — which is
+   * most requirements. A member is one acceptable answer, not a demand.
+   */
+  group_id: string | null;
   concept_ids: string[];
   /** False when nothing in the ontology corresponds to it. */
   measurable: boolean;
@@ -107,6 +127,8 @@ export interface JobDescription {
   required_skills: string[];
   /** §5's contract: each requirement with the span it was written at. */
   requirements: Requirement[];
+  /** The places the posting offered a CHOICE rather than making a demand. */
+  requirement_groups: RequirementGroup[];
   /** The hard filters — CGPA, backlogs, batch, bond. Never interview topics. */
   eligibility: EligibilityCriteria;
   /** skill label -> concept_id. Only labels that resolved to something. */

@@ -67,7 +67,7 @@ one table whose requirements are a flat `list[str]`:
 |---|---|---|
 | FR-2.1 | 🟡 | Pasted text only. `JdParseIn` requires `raw_text`; no PDF/DOCX, no company+role |
 | FR-2.2 | 🟡 | **Spans 2026-08-25, necessity + weight 2026-08-27** — every requirement carries a `SourceSpan` that resolves verbatim, a `necessity` read from the posting's own modal language and the heading the line sits under, a `mentions` count, and a `weight` normalised across the set by §6.4's formula. §3.2.1 trap 2 is closed: "Bonus: familiarity with Docker" now weighs ~6× less than a stated must instead of exactly the same. `should` is the default and means *the posting did not say* — not *optional*. Still missing: `kind`, `measured_by`, `seniority_signal`, and `emphasis_w` reads bulleting only, because plain text carries no bold |
-| FR-2.3 | ⬜ | No disjunctive `any_of` groups |
+| FR-2.3 | 🟡 | **Landed 2026-08-27.** "Docker or Kubernetes" is one `RequirementGroup` with `satisfaction: any_of` over two requirements, not three requirements. The alternatives share one requirement's weight. A slash splits only when the ontology recognises ≥2 of its parts — `Java/Python/C++` does, `CI/CD` does not — so with M04 down nothing splits and slashed requirements stay whole rather than being invented into three. `n_of` is not emitted because no posting seen writes "at least two of" |
 | FR-2.4 | 🟡 | **Landed 2026-08-25.** CGPA, backlogs, batch and bond extracted with spans, stored beside the requirements rather than among them. `allowed_branches`, `location` and the package figures are still absent — omitted, not guessed |
 | FR-2.6 | ⬜ | No role archetype inference |
 | FR-2.8 | ⬜ | No `CoveragePlan`, no question budget. This is the module's name |
@@ -120,6 +120,32 @@ one table whose requirements are a flat `list[str]`:
       it was copied in recently — and M01's hyphen-wrap fix of 2026-08-25 is
       NOT in it. This is the drift `Platform_Core` exists to prevent; the
       shared half belongs there or in one module that owns it.
+
+### 1.3c Landed 2026-08-27
+
+- ✅ **The phantom compound.** `- Experience with Docker or Kubernetes`
+      produced THREE requirements: both alternatives plus a "Docker or
+      Kubernetes" compound that no ontology resolves, so it sat in the unmapped
+      queue permanently — and once weights existed it was drawing a full
+      requirement's worth. The disjunction is recorded before `drop_redundant`
+      deletes the compound, which is the only window in which it still exists.
+- ✅ **`drop_redundant` was comparing aliases with a raw substring test.**
+      `normalise_alias` strips punctuation, so "C++" becomes the single letter
+      `c`, and `"c" in "ci cd pipelines"` is True — resolving C++ deleted
+      every unresolved requirement containing the letter. "SQL" likewise
+      deleted "NoSQL". Nothing had caught it because the offline table holds
+      five multi-word concepts and nothing short had ever resolved; splitting
+      `Java/Python/C++` put a one-letter alias into `resolved` for the first
+      time. Whole-word containment now. **The same line was in M01** — same
+      function, copied — where it was live against M04 and silently removing
+      skills from students' own resumes. Fixed in both, tested in both.
+- ✅ **A field-level contract gate.** The route↔client and hook↔screen
+      gates do not notice the drift that happens most: the backend grows a
+      field and no frontend type mentions it, so nothing renders it and every
+      test is green. `requirement_groups` would have been invisible exactly
+      that way — the parser folding the choice and the screen drawing two
+      demands anyway. Every `JobDescription` and `Requirement` field must now
+      be declared in `types.ts`.
 
 ### 1.3b Landed 2026-08-25
 

@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from backend_M02_JD_Parser.router import FALLBACK_CONCEPTS
 
 
 def test_health(client):
@@ -711,3 +712,168 @@ def test_repetition_counts_as_emphasis(client, m04):
         _by_text(body["requirements"], "Python")["weight"]
         > _by_text(body["requirements"], "SQL")["weight"]
     )
+
+
+# ---------------------------------------------------------------------------
+#  Disjunctions (FR-2.3)
+# ---------------------------------------------------------------------------
+
+
+DISJUNCTION_JD = """Backend Engineer
+
+Requirements:
+- Experience with Docker or Kubernetes
+- SQL
+"""
+
+SLASH_JD = """Backend Engineer
+
+Requirements:
+- Java/Python/C++
+- CI/CD pipelines
+- SQL
+"""
+
+
+def _group_over(body: dict, *labels: str) -> dict:
+    """The group whose members are exactly `labels`, by requirement id."""
+    by_id = {r["id"]: r["text"] for r in body["requirements"]}
+    wanted = set(labels)
+    for group in body["requirement_groups"]:
+        if {by_id.get(rid) for rid in group["requirement_ids"]} == wanted:
+            return group
+    raise AssertionError(
+        f"no group over {sorted(wanted)}; groups="
+        + repr([[by_id.get(r) for r in g["requirement_ids"]] for g in body["requirement_groups"]])
+    )
+
+
+def test_or_is_one_requirement_with_two_answers(client, m04):
+    """§3.2.1: *"'Java/Python/C++' is a disjunction, not three requirements."*
+
+    What actually happened was worse than the spec's version. One bullet,
+    `- Experience with Docker or Kubernetes`, produced THREE requirements: both
+    alternatives and a phantom "Docker or Kubernetes" compound that no ontology
+    will ever resolve — so it sat in the unmapped queue permanently, and once
+    weights landed it was drawing a full requirement's worth of them.
+    """
+    body = _parsed(client, DISJUNCTION_JD)
+    texts = [r["text"] for r in body["requirements"]]
+    assert "Docker or Kubernetes" not in texts, "the phantom compound is still a requirement"
+    assert "Docker" in texts and "Kubernetes" in texts
+
+    group = _group_over(body, "Docker", "Kubernetes")
+    assert group["satisfaction"] == "any_of"
+    # The group quotes the words it was read from, so the screen can point at
+    # the line rather than asserting a choice the student cannot check.
+    assert "Docker or Kubernetes" in group["text"]
+
+
+def test_alternatives_share_one_requirements_weight(client, m04):
+    """Two ways to satisfy one demand is still one demand.
+
+    Leaving both members at full weight makes a two-way choice count double a
+    plain requirement — the same distortion the phantom compound caused,
+    arriving by a different route.
+    """
+    body = _parsed(client, DISJUNCTION_JD)
+    by_text = {r["text"]: r for r in body["requirements"]}
+
+    docker = by_text["Docker"]["weight"]
+    kubernetes = by_text["Kubernetes"]["weight"]
+    sql = by_text["SQL"]["weight"]
+
+    assert docker == pytest.approx(kubernetes)
+    # Same necessity and heading, so the pair together should weigh about what
+    # the single requirement does — not twice it.
+    assert docker + kubernetes == pytest.approx(sql, rel=0.35)
+    assert sum(r["weight"] for r in body["requirements"]) == pytest.approx(1.0, abs=0.01)
+
+
+def test_a_slash_splits_only_when_the_ontology_knows_the_parts(client, m04):
+    """`Java/Python/C++` is three; `CI/CD` is one; nothing in the text says which.
+
+    `_DELIMITERS` refuses to split on `/` because a wrong split fabricates a
+    skill, and "CI/CD" and "TCP/IP" are single names far more often than
+    "React/Angular" is two. So the question is asked rather than guessed at:
+    the parts are probed, and the compound splits only where at least two of
+    them are things M04 has heard of.
+    """
+    m04.up(
+        concepts=list(FALLBACK_CONCEPTS),
+        resolved={
+            "Java": "concept:java",
+            "Python": "concept:python",
+            "C++": "concept:cpp",
+            "SQL": "concept:sql_basics",
+        },
+    )
+    body = _parsed(client, SLASH_JD)
+    texts = [r["text"] for r in body["requirements"]]
+
+    assert "Java/Python/C++" not in texts
+    assert {"Java", "Python", "C++"} <= set(texts)
+    assert _group_over(body, "Java", "Python", "C++")["satisfaction"] == "any_of"
+
+    # And the one that is a single name stays a single name.
+    assert "CI/CD pipelines" in texts
+    assert "CI" not in texts and "CD" not in texts
+
+
+def test_with_m04_down_a_slash_compound_stays_whole(client, m04):
+    """Rule 2: a missing dependency narrows scope, it does not fabricate.
+
+    Nothing offline can tell "Java/Python/C++" from "CI/CD", so neither splits.
+    The requirement is still reported, still weighted, and still unmapped —
+    which is the honest state, and visibly different from three confident
+    requirements the ontology never confirmed.
+    """
+    body = _parsed(client, SLASH_JD)
+    texts = [r["text"] for r in body["requirements"]]
+
+    assert "Java/Python/C++" in texts
+    assert body["requirement_groups"] == []
+    assert "Java/Python/C++" in body["unresolved_skills"]
+
+
+def test_a_one_letter_concept_does_not_delete_the_rest_of_the_posting(client, m04):
+    """`drop_redundant` compared normalised aliases with a raw substring test.
+
+    `normalise_alias` strips punctuation, so "C++" becomes the single letter
+    `c` — and `"c" in "ci cd pipelines"` is True. Resolving C++ removed every
+    unresolved requirement containing the letter, which is most of a posting.
+    "R" and "Go" are worse.
+
+    Nothing caught it because nothing short had ever resolved: the offline
+    table holds five multi-word concepts. Splitting "Java/Python/C++" is what
+    first put a one-letter alias into `resolved`, and "CI/CD pipelines"
+    disappeared from the response with no error anywhere.
+    """
+    m04.up(
+        concepts=list(FALLBACK_CONCEPTS),
+        resolved={"C++": "concept:cpp", "Java": "concept:java", "Python": "concept:python"},
+    )
+    body = _parsed(
+        client,
+        "Backend Engineer\n\nRequirements:\n- Java/Python/C++\n- CI/CD pipelines\n"
+        "- Container orchestration\n",
+    )
+    texts = [r["text"] for r in body["requirements"]]
+
+    assert "CI/CD pipelines" in texts
+    assert "Container orchestration" in texts
+
+
+def test_a_shorter_name_inside_a_longer_one_is_a_different_technology(client, m04):
+    """NoSQL is not SQL, and whole-word containment is what says so.
+
+    The same substring test that deleted "CI/CD pipelines" would drop "NoSQL"
+    the moment "SQL" resolved — collapsing two genuinely different requirements
+    into one, and telling a student they are covered on a database they have
+    never used.
+    """
+    m04.up(concepts=list(FALLBACK_CONCEPTS), resolved={"SQL": "concept:sql_basics"})
+    body = _parsed(client, "Data Engineer\n\nRequirements:\n- SQL\n- NoSQL\n")
+    texts = [r["text"] for r in body["requirements"]]
+
+    assert "SQL" in texts and "NoSQL" in texts

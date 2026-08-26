@@ -32,8 +32,10 @@ from .extract import (
     drop_redundant,
     extract_eligibility,
     extract_surface_forms,
+    find_disjunctions,
     locate,
     scan_prose,
+    slash_parts,
 )
 
 
@@ -166,7 +168,6 @@ def get_candidate_mastery(candidate_id: uuid.UUID) -> dict | None:
     return _m04_get(f"/v1/candidates/{candidate_id}/mastery")
 
 
-
 #: Whitespace is the only thing normalised away.
 #:
 #: Not casefold: a JD is prose, and lowering it would make two genuinely
@@ -278,6 +279,38 @@ def parse_jd(
             seen.add(key)
             labels.append(label)
 
+    # ------------------------------------------------------------------
+    #  Is "Java/Python/C++" three alternatives, or is it "CI/CD"?
+    # ------------------------------------------------------------------
+    #  `_DELIMITERS` refuses to split on `/` on purpose, because "CI/CD" and
+    #  "TCP/IP" are single names far more often than "React/Angular" is two and
+    #  a wrong split fabricates a skill. That leaves the real disjunctions
+    #  unsplit, which §3.2.1 says makes a Python-only student look 33%
+    #  qualified — so the question gets ASKED rather than guessed at from
+    #  punctuation: probe the parts, and split only where at least two of them
+    #  are things the ontology has heard of.
+    #
+    #  One extra resolve call, and only when the posting contains a slash. With
+    #  M04 down the offline table answers and fewer compounds split: scope
+    #  narrows, nothing is invented.
+    compounds = {label: parts for label in labels if (parts := slash_parts(label))}
+    if compounds:
+        probe = sorted({part for parts in compounds.values() for part in parts})
+        probed = resolve_labels(probe)
+        for compound, parts in compounds.items():
+            known = [
+                part
+                for part in parts
+                if probed.get(part) or FALLBACK_RESOLUTIONS.get(normalise_alias(part))
+            ]
+            if len(known) < 2:
+                continue
+            # Inserted right after the compound so they read in document order.
+            at = labels.index(compound) + 1
+            for offset, part in enumerate(parts):
+                if normalise_alias(part) not in {normalise_alias(x) for x in labels}:
+                    labels.insert(at + offset, part)
+
     resolved = resolve_labels(labels)
 
     concepts_by_label: dict[str, str] = {}
@@ -297,12 +330,28 @@ def parse_jd(
         else:
             unresolved.append(label)
 
+    # Recorded BEFORE `drop_redundant`, which is about to delete
+    # "Docker or Kubernetes" for being subsumed by its parts. It is right to
+    # delete it — it resolves to nothing — but the choice it states has to
+    # survive it, or two alternatives read as two separate demands.
+    disjunctions = find_disjunctions(labels, concepts_by_label)
+
     unresolved = drop_redundant(unresolved, list(concepts_by_label))
     # Everything the JD asks for, mapped or not, in the order it asks. An
     # unmapped requirement is still a requirement — coverage reports it as
     # `unmeasurable` rather than dropping it, which is the only honest answer
     # to "does this candidate meet the bar" when we cannot test the bar.
     required = [label for label in labels if label in concepts_by_label or label in unresolved]
+
+    # Located against the ORIGINAL text, and folded: "Java or Python" becomes
+    # one group over two alternatives rather than three requirements.
+    requirement_set = locate(
+        payload.raw_text,
+        required,
+        resolved=concepts_by_label,
+        sources=concept_source,
+        disjunctions=disjunctions,
+    )
 
     jd = JobDescription(
         company_name=payload.company_name,
@@ -316,14 +365,9 @@ def parse_jd(
         # beside the requirements rather than among them.
         eligibility=extract_eligibility(payload.raw_text).model_dump(mode="json"),
         requirements=[
-            requirement.model_dump(mode="json")
-            for requirement in locate(
-                payload.raw_text,
-                required,
-                resolved=concepts_by_label,
-                sources=concept_source,
-            )
+            requirement.model_dump(mode="json") for requirement in requirement_set.requirements
         ],
+        requirement_groups=[group.model_dump(mode="json") for group in requirement_set.groups],
         resolved_concepts=concepts_by_label,
         concept_source=concept_source,
         unresolved_skills=unresolved,

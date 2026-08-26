@@ -346,6 +346,30 @@ def scan_prose(text: str, concepts: list[dict[str, Any]]) -> set[str]:
     return found
 
 
+def _contains_phrase(haystack: str, needle: str) -> bool:
+    """Does `needle` appear in `haystack` as whole words?
+
+    A raw `needle in haystack` was the test here until 2026-08-27, and it was
+    silently deleting requirements. `normalise_alias` strips punctuation, so
+    "C++" normalises to the single letter `c` — and `"c" in "ci cd pipelines"`
+    is True. Resolving C++ therefore removed every unresolved requirement whose
+    text happened to contain the letter, which is most of them. "R" and "Go"
+    are worse.
+
+    It went unnoticed because nothing short ever resolved: the offline table
+    holds five multi-word concepts. The disjunction work is what first put
+    "C++" into `resolved`, and a whole requirement vanished from the response.
+
+    Whole-word containment also fixes the quieter direction: "SQL" no longer
+    matches inside "NoSQL", which is a different technology.
+    """
+    hay = haystack.split()
+    need = needle.split()
+    if not need or len(need) > len(hay):
+        return False
+    return any(hay[index : index + len(need)] == need for index in range(len(hay) - len(need) + 1))
+
+
 def drop_redundant(unresolved: list[str], resolved: list[str]) -> list[str]:
     """Remove a conjunction phrase once its parts are carrying the meaning.
 
@@ -368,7 +392,7 @@ def drop_redundant(unresolved: list[str], resolved: list[str]) -> list[str]:
     for label in unresolved:
         key = normalise_alias(label)
 
-        if any(r and r != key and r in key for r in resolved_keys):
+        if any(r and r != key and _contains_phrase(key, r) for r in resolved_keys):
             continue
 
         parts = [normalise_alias(p) for p in _split_conjunctions(label)]
@@ -433,6 +457,9 @@ class Requirement(BaseModel):
     weight: float = 0.0
     #: How many times the posting says it. Repetition IS emphasis (§6.4).
     mentions: int = 1
+    #: The `RequirementGroup` this is one alternative of, when the posting
+    #: offered a choice. `None` for the ordinary case, which is most of them.
+    group_id: str | None = None
     concept_ids: list[str] = Field(default_factory=list)
     #: False when nothing in the ontology corresponds to it — "go-getter
     #: attitude". §3.2.3: mark it and say so rather than faking a score.
@@ -454,6 +481,137 @@ def requirement_pattern(label: str) -> re.Pattern[str]:
     body = r"\s+".join(re.escape(token) for token in label.split())
     body = body.replace(r"\-", r"-\s*")
     return re.compile(r"\b" + body + r"\b", re.IGNORECASE)
+
+
+# ---------------------------------------------------------------------------
+#  Disjunctions (FR-2.3) — the requirement that is one requirement
+# ---------------------------------------------------------------------------
+#
+# §3.2.1: *"'Java/Python/C++' is a disjunction, not three requirements. Missing
+# this makes a Python-only student look 33% qualified."*
+#
+# What was actually happening was worse than that, in three separate ways, all
+# visible on one bullet:
+#
+#     - Experience with Docker or Kubernetes
+#         -> "Docker or Kubernetes"   (a requirement, resolves to nothing)
+#         -> "Docker"                 (a requirement)
+#         -> "Kubernetes"             (a requirement)
+#
+# THREE requirements from one line: both alternatives, plus a phantom compound
+# that no ontology will ever resolve and that therefore sits in the unmapped
+# queue for ever. And now that weights exist, the phantom was drawing weight —
+# 0.237 of a posting, the same as Docker itself.
+#
+#     - Java/Python/C++
+#         -> "Java/Python/C++"        (one label, unresolvable, weight 0.1)
+#
+# The slash case does not even split, because `_DELIMITERS` excludes `/` on
+# purpose: "CI/CD" and "TCP/IP" are single names far more often than
+# "React/Angular" is two, and a wrong split fabricates a skill. That decision
+# is right and stays. What is added here is a way to tell the two apart that
+# does not involve guessing from punctuation:
+#
+#   ASK THE ONTOLOGY. A slash compound is a disjunction when at least two of
+#   its parts independently resolve to concepts.
+#
+# "Java", "Python" and "C++" resolve; "CI", "CD", "TCP" and "IP" do not. With
+# M04 down and only the offline table to consult, fewer compounds split and the
+# rest stay whole — scope narrows, nothing is fabricated, which is the rule.
+#
+# The English disjunctions ("or", "either", "any one of") need no such test.
+# The posting said the word.
+
+#: "Java or Python", "either Java or Kotlin", "any one of Java, Python, C++".
+#: `or` must be a whole word — "coordinator" is not a disjunction.
+_OR_SPLIT = re.compile(r"\s+or\s+|\s*,\s*(?=[^,]*\s+or\s+)|\s*,\s*", re.IGNORECASE)
+_HAS_OR = re.compile(r"\bor\b", re.IGNORECASE)
+_ANY_ONE_OF = re.compile(r"^\s*(?:any\s+one\s+of|one\s+of|either)\s+", re.IGNORECASE)
+
+
+def slash_parts(label: str) -> list[str]:
+    """The parts of `A/B/C`, or [] when the label has no slash to split on.
+
+    Syntax only. Whether these are three alternatives or one name with slashes
+    in it is a question for the ontology, and the ontology lives behind an HTTP
+    client in the router — so the router probes these and adds the ones that
+    resolve to the label list, and `disjunction_parts` then sees them.
+    """
+    if "/" not in label:
+        return []
+    parts = [part.strip() for part in label.split("/")]
+    return parts if len(parts) >= 2 and all(parts) else []
+
+
+def _or_parts(label: str) -> list[str]:
+    """The alternatives in an English disjunction, or [] if it is not one."""
+    if not _HAS_OR.search(label):
+        return []
+    body = _ANY_ONE_OF.sub("", label)
+    parts = [_clean(part) for part in _OR_SPLIT.split(body)]
+    parts = [part for part in parts if part]
+    return parts if len(parts) >= 2 else []
+
+
+def disjunction_parts(label: str, resolved: dict[str, str]) -> list[str]:
+    """The alternatives this label offers, or [] when it is one requirement.
+
+    `resolved` is the ontology's answer for every label in the document, and it
+    is what keeps "CI/CD" whole. It is consulted ONLY for the slash form: an
+    English "or" is the posting stating the disjunction outright, and a posting
+    is allowed to offer alternatives this platform has never heard of.
+    """
+    parts = _or_parts(label)
+    if parts:
+        return parts
+
+    parts = slash_parts(label)
+    if not parts:
+        return []
+
+    known_keys = {normalise_alias(label) for label in resolved}
+    known = sum(1 for part in parts if normalise_alias(part) in known_keys)
+    return parts if known >= 2 else []
+
+
+def find_disjunctions(labels: list[str], resolved: dict[str, str]) -> dict[str, list[str]]:
+    """Compound label -> its alternatives, for every choice the posting offered.
+
+    Runs on the LABEL list rather than on the finished requirements, because
+    `drop_redundant` deletes "Docker or Kubernetes" the moment "Docker" and
+    "Kubernetes" are both present — correctly, since the compound is subsumed
+    by its parts and resolves to nothing. But it takes the disjunction with it,
+    and two requirements where the posting wrote a choice is the exact "33%
+    qualified" reading §3.2.1 warns about. So the choice is recorded here,
+    while the compound still exists to be read.
+    """
+    known = {normalise_alias(label) for label in labels}
+    found: dict[str, list[str]] = {}
+    for label in labels:
+        parts = disjunction_parts(label, resolved)
+        present = [part for part in parts if normalise_alias(part) in known]
+        if len(present) >= 2:
+            found[label] = present
+    return found
+
+
+class RequirementGroup(BaseModel):
+    """§5's `RequirementGroup`, with only the satisfaction mode M02 can read.
+
+    `all_of` is not emitted, because it is the default and an explicit group
+    saying so would carry no information. `n_of` is not emitted, because no
+    posting seen so far writes "at least two of", and inventing a group nobody
+    wrote is the failure this whole file is about.
+    """
+
+    id: str
+    satisfaction: str = "any_of"
+    #: `Requirement.id`s. Two or more, always — a group of one is not a choice.
+    requirement_ids: list[str]
+    #: The words the disjunction was written as, so the screen can say
+    #: "the posting asked for one of these" and point at the line.
+    text: str
+    span: SourceSpan | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -595,13 +753,26 @@ def _raw_weight(text: str, requirement: Requirement, mentions: int) -> float:
     return necessity_mult * position_w * repetition_w * emphasis_w * source_w
 
 
+class RequirementSet(BaseModel):
+    """What `locate` produces: the requirements, and the choices among them.
+
+    Two lists rather than a nested structure, because every consumer wants the
+    flat one — coverage iterates requirements, and the group is a lookup it
+    consults when deciding whether a miss is really a miss.
+    """
+
+    requirements: list[Requirement] = Field(default_factory=list)
+    groups: list[RequirementGroup] = Field(default_factory=list)
+
+
 def locate(
     text: str,
     labels: list[str],
     *,
     resolved: dict[str, str],
     sources: dict[str, str],
-) -> list[Requirement]:
+    disjunctions: dict[str, list[str]] | None = None,
+) -> RequirementSet:
     """Every requirement, with the span it was written at.
 
     First occurrence only. A JD that says "Python" four times is making one
@@ -610,6 +781,10 @@ def locate(
 
     Ordered by position, so the list reads down the posting rather than in
     whatever order extraction happened to resolve things.
+
+    Disjunctions are folded here rather than after, because weights are
+    normalised across the set: dropping a phantom compound afterwards would
+    leave the remaining weights summing to less than one.
     """
     found: list[tuple[int, Requirement]] = []
 
@@ -640,25 +815,117 @@ def locate(
     found.sort(key=lambda item: item[0])
     ordered = [requirement for _, requirement in found]
 
+    ordered, groups = _fold_disjunctions(text, ordered, disjunctions or {})
+
     # Weights are normalised ACROSS the set, so they cannot be computed until
     # every requirement is known. §6.4: `weight = raw / sum(all_raw)`.
     raws = [_raw_weight(text, requirement, requirement.mentions) for requirement in ordered]
+
+    # Alternatives SHARE one requirement's weight. "Java or Python" is one thing
+    # the posting wants, and leaving both members at full weight would make a
+    # two-way choice count double a plain requirement — the same distortion as
+    # the phantom compound, arriving by a different route.
+    for group in groups:
+        members = [i for i, r in enumerate(ordered) if r.group_id == group.id]
+        if not members:
+            continue
+        share = max(raws[i] for i in members) / len(members)
+        for i in members:
+            raws[i] = share
+
     total = sum(raws)
 
     # Renumbered after sorting, so `R-1` is the first requirement in the
     # document rather than the first one the resolver happened to finish.
-    return [
+    renamed = {
+        requirement.id: f"R-{position}" for position, requirement in enumerate(ordered, start=1)
+    }
+    requirements = [
         requirement.model_copy(
             update={
-                "id": f"R-{position}",
+                "id": renamed[requirement.id],
                 # An empty set has no weights to normalise; one with zero total
                 # raw weight would divide by zero. Neither can happen from a
                 # real posting, and both would take the parse down.
                 "weight": round(raw / total, 4) if total else 0.0,
             }
         )
-        for position, (requirement, raw) in enumerate(zip(ordered, raws, strict=True), start=1)
+        for requirement, raw in zip(ordered, raws, strict=True)
     ]
+    groups = [
+        group.model_copy(
+            update={
+                "requirement_ids": [
+                    renamed[member] for member in group.requirement_ids if member in renamed
+                ]
+            }
+        )
+        for group in groups
+    ]
+    return RequirementSet(requirements=requirements, groups=groups)
+
+
+def _fold_disjunctions(
+    text: str,
+    ordered: list[Requirement],
+    disjunctions: dict[str, list[str]],
+) -> tuple[list[Requirement], list[RequirementGroup]]:
+    """Turn each recorded choice into a group over the requirements it offers.
+
+    The compound is dropped if it survived this far. Keeping it alongside its
+    parts is what produced three requirements from one line — and the compound
+    is the one of the three that can never resolve to a concept, so it sat in
+    the unmapped queue permanently and, once weights existed, drew weight there.
+
+    A choice whose alternatives are not both present as requirements is left
+    alone. If `_acceptable` rejected one of them, folding would delete a
+    requirement the posting stated, and that is never the thing to lose.
+    """
+    by_key = {normalise_alias(requirement.text): requirement for requirement in ordered}
+    groups: list[RequirementGroup] = []
+    dropped: set[str] = set()
+    member_of: dict[str, str] = {}
+
+    for compound, parts in disjunctions.items():
+        members = [by_key.get(normalise_alias(part)) for part in parts]
+        present = [
+            member
+            for member in members
+            if member is not None and normalise_alias(member.text) != normalise_alias(compound)
+        ]
+        if len(present) < 2:
+            continue
+
+        # An alternative already spoken for stays where it is. Two overlapping
+        # disjunctions in one posting is rare and ambiguous, and the honest
+        # reading of "A or B" plus "B or C" is not a four-way choice.
+        if any(member.id in member_of for member in present):
+            continue
+
+        match = requirement_pattern(compound).search(text)
+        groups.append(
+            RequirementGroup(
+                id=f"G-{len(groups) + 1}",
+                requirement_ids=[member.id for member in present],
+                text=compound,
+                span=SourceSpan(start=match.start(), end=match.end(), text=match.group(0))
+                if match
+                else None,
+            )
+        )
+        for member in present:
+            member_of[member.id] = groups[-1].id
+
+        stale = by_key.get(normalise_alias(compound))
+        if stale is not None:
+            dropped.add(stale.id)
+
+    kept = [
+        requirement.model_copy(update={"group_id": member_of.get(requirement.id)})
+        for requirement in ordered
+        if requirement.id not in dropped
+    ]
+    return kept, groups
 
 
 # ---------------------------------------------------------------------------

@@ -36,7 +36,12 @@ import {
   Section,
   SkeletonRows,
 } from "../ui/primitives";
-import type { EligibilityCriteria, Necessity, Requirement } from "../types";
+import type {
+  EligibilityCriteria,
+  Necessity,
+  Requirement,
+  RequirementGroup,
+} from "../types";
 
 export function JdPage() {
   const { jdId } = useParams<{ jdId: string }>();
@@ -109,6 +114,7 @@ export function JdPage() {
                   key={necessity}
                   necessity={necessity}
                   requirements={group}
+                  groups={data.requirement_groups}
                   rawText={data.raw_text}
                 />
               );
@@ -134,11 +140,17 @@ export function JdPage() {
               is a <strong>should</strong>: that means unstated, not optional.
             </p>
             <p>
-              Still missing: any-of groups. A posting asking for
-              &ldquo;Java/Python/C++&rdquo; is making <em>one</em> requirement
-              with three acceptable answers, and it currently reads as three, so
-              a student who knows only Python looks a third qualified instead of
-              fully. Also absent are <code className="provenance">kind</code>,{" "}
+              Any-of groups are read now: &ldquo;Docker or Kubernetes&rdquo; is
+              one requirement with two acceptable answers rather than two
+              demands, and the alternatives share one requirement&rsquo;s
+              weight. A slash is the ambiguous case &mdash;
+              &ldquo;Java/Python/C++&rdquo; is a choice and &ldquo;CI/CD&rdquo;
+              is a name &mdash; so it splits only when the ontology recognises
+              at least two of the parts. With M04 down nothing splits, which is
+              why a slashed requirement can appear here whole.
+            </p>
+            <p>
+              Still absent: <code className="provenance">kind</code>,{" "}
               <code className="provenance">measured_by</code> and{" "}
               <code className="provenance">seniority_signal</code>.
             </p>
@@ -180,6 +192,45 @@ export function JdPage() {
 }
 
 /**
+ * The rows of one necessity band: single requirements, and choices.
+ *
+ * A choice is rendered ONCE, as one row holding its alternatives, because that
+ * is what the posting wrote. Rendering "Docker" and "Kubernetes" as two rows
+ * is the §3.2.1 mistake at the last possible moment — the parser got it right
+ * and the screen put it back.
+ */
+type Row =
+  | { kind: "one"; requirement: Requirement }
+  | { kind: "choice"; group: RequirementGroup; members: Requirement[] };
+
+function rowsFor(
+  requirements: Requirement[],
+  groups: RequirementGroup[],
+): Row[] {
+  const byId = new Map(groups.map((group) => [group.id, group]));
+  const emitted = new Set<string>();
+  const rows: Row[] = [];
+
+  for (const requirement of requirements) {
+    const group = requirement.group_id
+      ? byId.get(requirement.group_id)
+      : undefined;
+    if (!group) {
+      rows.push({ kind: "one", requirement });
+      continue;
+    }
+    if (emitted.has(group.id)) continue;
+    emitted.add(group.id);
+    rows.push({
+      kind: "choice",
+      group,
+      members: requirements.filter((r) => r.group_id === group.id),
+    });
+  }
+  return rows;
+}
+
+/**
  * Strongest first. A student reading top-down reads the things that will
  * actually get asked before the things that might.
  */
@@ -218,14 +269,17 @@ const NECESSITY_COPY: Record<Necessity, { title: string; note: string }> = {
 function NecessityGroup({
   necessity,
   requirements,
+  groups,
   rawText,
 }: {
   necessity: Necessity;
   requirements: Requirement[];
+  groups: RequirementGroup[];
   rawText: string;
 }) {
   const copy = NECESSITY_COPY[necessity];
   const share = requirements.reduce((sum, r) => sum + r.weight, 0);
+  const rows = rowsFor(requirements, groups);
 
   return (
     <div>
@@ -244,59 +298,139 @@ function NecessityGroup({
       <p className="mt-1 text-xs text-ink-faint">{copy.note}</p>
 
       <Panel className="mt-2 px-4 py-1">
-        {/* One row per requirement, each quoting the words it came from.
-            The span is the reason this is a list rather than a row of chips:
-            "we found Python" is a claim about the posting, and a student can
-            only check it against the line it was read from. */}
         <div className="divide-y divide-line">
-          {requirements.map((requirement) => (
-            <div
-              key={requirement.id}
-              className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2"
-            >
-              <span className="min-w-0">
-                <span className="text-sm text-ink">{requirement.text}</span>
-                {requirement.mentions > 1 && (
-                  <span
-                    className="provenance ml-2"
-                    title="Repetition is emphasis — a posting that says it three times means it"
-                  >
-                    &times;{requirement.mentions}
-                  </span>
-                )}
-                {requirement.span && (
-                  <span className="provenance ml-2 break-words">
-                    &ldquo;{quote(rawText, requirement.span)}&rdquo;
-                  </span>
-                )}
-              </span>
-              <Pill
-                tone={
-                  requirement.concept_source === "m04"
-                    ? "confirmed"
-                    : "reported"
-                }
-                title={
-                  requirement.concept_ids[0]
-                    ? `${requirement.concept_ids[0]} · ${
-                        requirement.concept_source === "m04"
-                          ? "resolved by M04"
-                          : "guessed offline, unconfirmed"
-                      }`
-                    : "no concept id — nothing downstream can test this"
-                }
-              >
-                {requirement.measurable
-                  ? requirement.concept_source === "m04"
-                    ? "ontology"
-                    : "guessed offline"
-                  : "no concept yet"}
-              </Pill>
-            </div>
-          ))}
+          {rows.map((row) =>
+            row.kind === "one" ? (
+              <RequirementRow
+                key={row.requirement.id}
+                requirement={row.requirement}
+                rawText={rawText}
+              />
+            ) : (
+              <ChoiceRow
+                key={row.group.id}
+                group={row.group}
+                members={row.members}
+                rawText={rawText}
+              />
+            ),
+          )}
         </div>
       </Panel>
     </div>
+  );
+}
+
+/**
+ * One requirement, quoting the words it came from.
+ *
+ * The span is the reason this is a list rather than a row of chips: "we found
+ * Python" is a claim about the posting, and a student can only check it
+ * against the line it was read from.
+ */
+function RequirementRow({
+  requirement,
+  rawText,
+  compact = false,
+}: {
+  requirement: Requirement;
+  rawText: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
+      <span className="min-w-0">
+        <span className="text-sm text-ink">{requirement.text}</span>
+        {requirement.mentions > 1 && (
+          <span
+            className="provenance ml-2"
+            title="Repetition is emphasis — a posting that says it three times means it"
+          >
+            &times;{requirement.mentions}
+          </span>
+        )}
+        {!compact && requirement.span && (
+          <span className="provenance ml-2 break-words">
+            &ldquo;{quote(rawText, requirement.span)}&rdquo;
+          </span>
+        )}
+      </span>
+      <ConceptPill requirement={requirement} />
+    </div>
+  );
+}
+
+/**
+ * A choice: one requirement with several acceptable answers.
+ *
+ * §3.2.1: *"'Java/Python/C++' is a disjunction, not three requirements.
+ * Missing this makes a Python-only student look 33% qualified."* Rendering the
+ * alternatives as sibling rows would reintroduce exactly that reading after
+ * the parser had already got it right, so they are indented under one heading
+ * that says what the posting actually asked.
+ */
+function ChoiceRow({
+  group,
+  members,
+  rawText,
+}: {
+  group: RequirementGroup;
+  members: Requirement[];
+  rawText: string;
+}) {
+  return (
+    <div className="py-2">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className="text-sm text-ink">Any one of</span>
+        <span className="text-sm font-medium text-ink">
+          {members.map((member) => member.text).join(" · ")}
+        </span>
+        {group.span && (
+          <span className="provenance break-words">
+            &ldquo;{quote(rawText, group.span)}&rdquo;
+          </span>
+        )}
+      </div>
+      <p className="mt-0.5 text-xs text-ink-faint">
+        The posting offered a choice, so knowing one of these meets it. They
+        share one requirement&rsquo;s weight between them rather than counting
+        as {members.length}.
+      </p>
+      <div className="mt-1 divide-y divide-line border-l-2 border-line pl-3">
+        {members.map((member) => (
+          <RequirementRow
+            key={member.id}
+            requirement={member}
+            rawText={rawText}
+            compact
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Where a requirement's concept id came from, or that it has none. */
+function ConceptPill({ requirement }: { requirement: Requirement }) {
+  return (
+    <Pill
+      tone={requirement.concept_source === "m04" ? "confirmed" : "reported"}
+      title={
+        requirement.concept_ids[0]
+          ? `${requirement.concept_ids[0]} · ${
+              requirement.concept_source === "m04"
+                ? "resolved by M04"
+                : "guessed offline, unconfirmed"
+            }`
+          : "no concept id — nothing downstream can test this"
+      }
+    >
+      {requirement.measurable
+        ? requirement.concept_source === "m04"
+          ? "ontology"
+          : "guessed offline"
+        : "no concept yet"}
+    </Pill>
   );
 }
 

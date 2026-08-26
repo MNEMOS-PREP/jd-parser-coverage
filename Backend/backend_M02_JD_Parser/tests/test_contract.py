@@ -35,6 +35,8 @@ import re
 
 import pytest
 from backend_M02_JD_Parser.app import app
+from backend_M02_JD_Parser.extract import Requirement
+from backend_M02_JD_Parser.models import JobDescription
 
 _REPO = pathlib.Path(__file__).resolve().parents[3]
 _FRONTEND = _REPO / "Frontend" / "frontend_M02_JD_Parser" / "src"
@@ -142,3 +144,67 @@ def test_every_raw_fetch_in_the_client_sends_identity():
         "raw fetch without identity headers — the backend will answer 403:\n  "
         + "\n  ".join(call.strip()[:90] for call in naked)
     )
+
+
+# ---------------------------------------------------------------------------
+#  The shape of the response, not just the address of it
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.gate
+def test_every_field_the_backend_returns_is_declared_on_the_frontend():
+    """A field with no consumer is a feature that stops at the database.
+
+    The three gates above check that a route has a caller and a hook has a
+    screen. None of them notices the drift that actually happens most often:
+    the backend grows a field, the response carries it, and no frontend type
+    mentions it — so nothing renders it and the tests are all green.
+
+    That is not hypothetical either. `requirement_groups` landed on 2026-08-27
+    and would have been invisible: the parse folds "Docker or Kubernetes" into
+    one choice, stores the group, returns it, and the screen goes on drawing
+    two separate demands — the exact §3.2.1 mistake, fixed in the parser and
+    reintroduced by the renderer.
+
+    Declared, not necessarily rendered. A type is where a field becomes
+    reachable, and a field nobody typed is one nobody can reach.
+    """
+    declared = set(JobDescription.model_fields)
+    interface = re.search(
+        r"export interface JobDescription \{(.*?)\n\}",
+        _source("types.ts"),
+        re.DOTALL,
+    )
+    assert interface, "no JobDescription interface in types.ts — the file layout changed"
+
+    typed = set(re.findall(r"^\s{2}([a-z_0-9]+)\??:", interface.group(1), re.MULTILINE))
+    missing = sorted(declared - typed)
+
+    assert not missing, (
+        "backend fields absent from the frontend's JobDescription:\n  "
+        + "\n  ".join(missing)
+        + "\nAdd them to types.ts, or the screen cannot reach what the parse found."
+    )
+
+
+@pytest.mark.gate
+def test_every_requirement_field_is_declared_too():
+    """The same check one level down, where the interesting fields live.
+
+    `necessity`, `weight` and `group_id` are all on the requirement rather than
+    on the JD, and they are what the coverage plan will allocate on. A screen
+    that silently does not know about `necessity` renders a flat list and looks
+    completely fine doing it.
+    """
+    declared = set(Requirement.model_fields)
+    interface = re.search(
+        r"export interface Requirement \{(.*?)\n\}",
+        _source("types.ts"),
+        re.DOTALL,
+    )
+    assert interface, "no Requirement interface in types.ts"
+
+    typed = set(re.findall(r"^\s{2}([a-z_0-9]+)\??:", interface.group(1), re.MULTILINE))
+    missing = sorted(declared - typed)
+
+    assert not missing, "Requirement fields absent from types.ts:\n  " + "\n  ".join(missing)

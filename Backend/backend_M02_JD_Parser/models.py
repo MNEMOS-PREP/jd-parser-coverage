@@ -48,6 +48,12 @@ class JobDescription(SQLModel, table=True):
     #: contained.
     requirements: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
 
+    #: `RequirementGroup`s (FR-2.3): the places the posting offered a CHOICE.
+    #: Separate from `requirements` because a group is not a requirement — it
+    #: is a statement about several of them, and folding it into the list is
+    #: exactly the mistake that made "Java or Python" read as two demands.
+    requirement_groups: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
+
     #: `EligibilityCriteria` (FR-2.4): the CGPA cutoff, backlog rule, batch and
     #: bond, each with the line it was read from.
     #:
