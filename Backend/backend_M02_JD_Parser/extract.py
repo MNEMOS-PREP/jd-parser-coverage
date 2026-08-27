@@ -740,6 +740,25 @@ class Requirement(BaseModel):
     #: answer (§3.2.1 trap 3): "go-getter attitude" is a requirement the
     #: posting made and nothing here can test, and saying so is the point.
     measured_by: list[str] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def testable(self) -> bool:
+        """Can this platform put a question about it in front of the student?
+
+        Grounded requirements go to M04's concept graph. Ungrounded ones can
+        still be asked about directly — M05 generates from the requirement
+        text — provided two things hold: the posting actually STATES it at a
+        real offset, so a generated question cites something the company wrote;
+        and `measured_by` names a round that could carry it.
+
+        A requirement with an empty `measured_by` is neither, and that is the
+        honest end of it (§3.2.1 trap 3).
+
+        Computed rather than stored, so it cannot drift from its inputs.
+        """
+        return bool(self.grounded or (self.measured_by and self.span is not None))
+
     #: `intern` | `fresher` | `junior` | `mid` | `senior`, or `None` because
     #: the posting did not say. Never defaulted — this platform's users are
     #: overwhelmingly freshers, so a `fresher` default would always agree and
@@ -748,7 +767,11 @@ class Requirement(BaseModel):
     concept_ids: list[str] = Field(default_factory=list)
     #: False when nothing in the ontology corresponds to it — "go-getter
     #: attitude". §3.2.3: mark it and say so rather than faking a score.
-    measurable: bool = False
+    #: A concept id exists, so M04 can supply mastery, prerequisites and an
+    #: adaptive ladder. The strong case, and the rarer one: M04's ontology is
+    #: interview concepts rather than technologies, so most of a modern
+    #: posting's stack is ungrounded by design.
+    grounded: bool = False
     #: Where the id came from, when there is one. `m04` and a five-entry
     #: offline guess are not the same claim.
     concept_source: str | None = None
@@ -1151,7 +1174,7 @@ def locate(
                         else "jd"
                     ),
                     concept_ids=[concept_id] if concept_id else [],
-                    measurable=bool(concept_id),
+                    grounded=bool(concept_id),
                     concept_source=sources.get(label),
                 ),
             )

@@ -569,7 +569,7 @@ function ConceptPill({ requirement }: { requirement: Requirement }) {
           : "no concept id — nothing downstream can test this"
       }
     >
-      {requirement.measurable
+      {requirement.grounded
         ? requirement.concept_source === "m04"
           ? "ontology"
           : "guessed offline"

@@ -440,22 +440,62 @@ def test_requirements_are_in_the_order_the_posting_writes_them(client, m04):
     assert [r["id"] for r in requirements] == [f"R-{n}" for n in range(1, len(requirements) + 1)]
 
 
-def test_a_requirement_says_whether_anything_can_test_it(client, m04):
-    """§3.2.3: mark it `unmeasurable` and say so rather than faking a score.
+def test_grounded_and_testable_are_different_questions(client, m04):
+    """One boolean was answering both, and the answer was wrong for one of them.
 
-    `measurable` and `concept_source` travel with the requirement so a caller
-    cannot mistake an offline guess for an ontology-confirmed id — the same
-    provenance rule the flat lists already carried, now attached to the row
-    it describes.
+    GROUNDED means a concept id exists, so M04 can supply mastery,
+    prerequisites and an adaptive ladder. TESTABLE means a question can be put
+    in front of the student at all — including one M05 generates from the
+    requirement text, for something the ontology has never heard of.
+
+    M04's ontology is 120 interview concepts and two of them are
+    technology-shaped, so a modern stack grounds almost nowhere. Reading "no
+    concept id" as "unaskable" reported 72 of 73 requirements untestable on a
+    real posting where 72 are perfectly askable.
     """
     body = _parse_response(client).json()
 
     for requirement in body["requirements"]:
-        if requirement["measurable"]:
-            assert requirement["concept_ids"], "measurable with no concept id"
+        if requirement["grounded"]:
+            assert requirement["concept_ids"], "grounded with no concept id"
             assert requirement["concept_source"] in {"m04", "offline_fallback"}
+            assert requirement["testable"], "grounded implies testable"
         else:
             assert requirement["concept_ids"] == []
+
+
+def test_an_ungrounded_requirement_the_posting_states_is_still_testable(client, m04):
+    """Kubernetes is not in M04's ontology and never will be.
+
+    It is still a thing a company asked for, at a real offset, that a verbal
+    round can carry — so M05 can generate a question citing the line the
+    company wrote. Weaker than the grounded case, which comes with a mastery
+    prior and an adaptive ladder, and not the same as nothing.
+    """
+    body = _parsed(client, "Backend\n\nRequirements:\n- Kubernetes\n- Terraform\n")
+    by_text = {r["text"]: r for r in body["requirements"]}
+
+    kubernetes = by_text["Kubernetes"]
+    assert kubernetes["grounded"] is False, "the ontology holds concepts, not technologies"
+    assert kubernetes["testable"] is True
+    assert kubernetes["span"] is not None, "a generated question must cite the posting"
+    assert kubernetes["measured_by"], "and a round has to be able to carry it"
+
+
+def test_something_nothing_can_produce_evidence_about_is_neither(client, m04):
+    """§3.2.1 trap 3's third tier survives the distinction.
+
+    "A go-getter attitude" has an empty `measured_by`: no round here produces
+    evidence about it, so it is not grounded and not testable, and saying so is
+    the point.
+    """
+    body = _parsed(client, "Backend\n\nRequirements:\n- A go-getter attitude\n- SQL\n")
+    by_text = {r["text"]: r for r in body["requirements"]}
+
+    attitude = by_text["go-getter attitude"]
+    assert attitude["grounded"] is False
+    assert attitude["testable"] is False
+    assert attitude["measured_by"] == []
 
 
 def test_the_flat_list_and_the_requirements_agree(client, m04):
@@ -1056,10 +1096,10 @@ UNTESTABLE_JD = """Backend Engineer
 
 Requirements:
 - SQL
-- Kubernetes
-- Terraform
-- GraphQL
-- Rust
+- A go-getter attitude
+- Passionate about technology
+- Self-starter mindset
+- Positive attitude
 """
 
 PLAN_DISJUNCTION_JD = """Backend
@@ -1302,11 +1342,15 @@ def test_a_normal_session_is_not_saturated(client, m04_mastery):
 def test_saturation_blames_the_ontology_when_the_ontology_is_the_cause(client, m04_mastery):
     """ "This posting only has enough in it for 14 minutes" was the wrong sentence.
 
-    Found by running the module with M04 down, which is the common state: four
-    of five requirements resolve to no concept, one is testable, it caps at
-    four questions, and the plan reported that the POSTING was small. It was
-    not — our ontology was missing, and a student reading that would go looking
-    for a longer job description when the fix is upstream of them entirely.
+    Found by running the module and reading the plan: one requirement testable,
+    four questions, and a message saying the POSTING was small. It was not.
+
+    The fixture changed on 2026-08-27 when `grounded` and `testable` were
+    separated. It used to be five technologies, four of which the ontology does
+    not hold — and those are ungrounded, not untestable, because M05 can
+    generate a question about Kubernetes from the line the company wrote. The
+    only genuinely untestable requirements are the ones with an empty
+    `measured_by`: attitudes, which no round produces evidence about.
     """
     m04_mastery({"measured": []})
     res = client.post(

@@ -116,6 +116,14 @@ class CoverageAllocation(BaseModel):
     #: The label, so a caller can render the plan without re-joining it against
     #: the requirement list.
     requirement_text: str
+    #: False when M05 must GENERATE a question from the requirement text rather
+    #: than draw one from M04's concept graph.
+    #:
+    #: Carried per allocation because the two are different products: a grounded
+    #: question comes with a mastery prior, prerequisites and an adaptive
+    #: ladder, and a generated one comes with the requirement and the line it
+    #: was written on. Both are real questions; only one can adapt.
+    grounded: bool = True
     question_budget: int
     #: `verbal`, `coding` or `design`, from `measured_by`. What a question about
     #: this requirement would actually be, and therefore what it costs.
@@ -198,7 +206,23 @@ def _marginal_gain(priority: float, questions: int, minutes: float) -> float:
     return (priority * delta) / minutes
 
 
-def _rationale(necessity: str, state: str, questions: int) -> str:
+def _rationale(necessity: str, state: str, questions: int, grounded: bool) -> str:
+    """Why this requirement got this many questions, in words a student can argue with.
+
+    `grounded` changes the sentence rather than decorating it. "Never measured"
+    is true of a grounded concept M04 holds no score for, and misleading for a
+    requirement M04 has no NODE for — nobody was ever going to measure
+    LangChain against an ontology of DSA and CS fundamentals, and saying "never
+    measured" invites a student to wonder what they did wrong.
+    """
+    if not grounded:
+        # M05 generates from the requirement text and the line it was written
+        # on. No mastery prior, no adaptive ladder, and a real question.
+        return (
+            f"{necessity}-have, and outside the concept graph "
+            "— the question comes from the posting itself"
+        )
+
     gap = {
         "weak": "a measured gap",
         "not_measured": "never measured",
@@ -240,22 +264,22 @@ def build_plan(
     considered = [
         requirement
         for requirement in requirements
-        if states.get(requirement["text"]) not in {"unmeasurable", "met_by_alternative"}
-        and requirement.get("measurable")
-        # §3.2.1 trap 3: an empty `measured_by` means no round in this platform
-        # could produce evidence about it. Allocating a question to "go-getter
-        # attitude" spends interview minutes on something nothing can score.
-        and requirement.get("measured_by")
+        if states.get(requirement["text"]) != "met_by_alternative"
+        # TESTABLE, not merely grounded. A requirement with no concept id can
+        # still be asked about — M05 generates from the requirement text —
+        # provided the posting states it and `measured_by` names a round.
+        #
+        # Filtering on `grounded` instead is what produced a four-question plan
+        # for a posting with seventy-three requirements: M04's ontology is
+        # interview concepts, so an AI engineering stack grounds almost
+        # nowhere, and "no concept id" was being read as "unaskable".
+        and requirement.get("testable")
     ]
     unmeasurable = [
         requirement["text"]
         for requirement in requirements
         if states.get(requirement["text"]) != "met_by_alternative"
-        and (
-            not requirement.get("measurable")
-            or states.get(requirement["text"]) == "unmeasurable"
-            or not requirement.get("measured_by")
-        )
+        and not requirement.get("testable")
     ]
 
     # What one question about each requirement costs. This is the whole point of
@@ -330,6 +354,7 @@ def build_plan(
         CoverageAllocation(
             requirement_id=requirement_id,
             requirement_text=by_id[requirement_id]["text"],
+            grounded=bool(by_id[requirement_id].get("grounded")),
             question_budget=count,
             round_type=rounds[requirement_id],
             priority=round(priorities[requirement_id], 4),
@@ -337,6 +362,7 @@ def build_plan(
                 by_id[requirement_id].get("necessity", "should"),
                 states.get(by_id[requirement_id]["text"], "not_measured"),
                 count,
+                bool(by_id[requirement_id].get("grounded")),
             ),
             minutes=round(count * cost[requirement_id], 2),
         )

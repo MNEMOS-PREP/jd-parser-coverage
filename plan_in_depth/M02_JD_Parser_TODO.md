@@ -94,7 +94,7 @@ Spec §4. This is the authoritative list; §3 below is only the inter-module hal
 | FR-2.2 | ✅ | **Complete 2026-08-27.** `SourceSpan`, `necessity`, `weight`, `mentions`, `kind`, `measured_by`, `seniority_signal`. §3.2.1 trap 3 closed in all three tiers: "communication" → `[communication]`, "team player" → `[behavioural]`, "go-getter attitude" → `[]` and said out loud. Lexicon-derived rather than §6.2's LLM call — deterministic, auditable, and the fallback that call needs behind it anyway. Everything defaults to the CHEAPEST round: overpricing under-fills a session, underpricing breaks a promise. |
 | FR-2.3 | 🟡 | **Landed 2026-08-27.** "Docker or Kubernetes" is one `RequirementGroup` with `satisfaction: any_of` over two requirements, not three. Alternatives share one requirement's weight, and an answered choice is excluded from the gap, the plan and the resume match. A slash splits only when the ontology recognises ≥2 parts — `Java/Python/C++` does, `CI/CD` does not — so with M04 down nothing splits rather than being invented into three. **Missing: `n_of`**, deliberately — no posting seen writes "at least two of". |
 | FR-2.4 | ✅ | **Complete 2026-08-27.** CGPA, active AND history backlogs, batch, bond, `allowed_branches`, `location`, both package figures. `package_lpa_fixed` is separate because a 6.5 LPA headline with 2 LPA variable is a 4.5 LPA salary and students compare the wrong one. The slash IS split for branches and nowhere else. |
-| FR-2.5 | 🟡 | Every requirement carries `concept_ids` and `measurable`, and `concept_source` records whether M04 resolved it or the offline table guessed. **Missing: the offline table holds five concepts**, so with M04 down almost everything is unresolved — honest, and thin. |
+| FR-2.5 | 🟡 | **Reframed 2026-08-27.** `grounded` (a concept id exists → M04 can drive adaptive questioning) is now separate from `testable` (a question can be put in front of the student at all). One boolean was answering both and reported *72 of 73 untestable* on a posting where 72 are perfectly askable. **This is not an M04 outage**: M04's ontology is 120 interview concepts — 55 DSA, 50 CS-core, 15 communication — and exactly two are technology-shaped. A modern stack grounds almost nowhere BY DESIGN. The plan now allocates to testable-but-ungrounded requirements, marked `grounded: false` so M05 knows to generate rather than draw from the graph |
 | FR-2.6 | ✅ | **Landed 2026-08-27.** A 24-archetype library, matched on title phrases with §6.3's margin check against top-2. Under five requirements, the posting is topped up to eight, each marked `source="archetype"` with `span=None` — the pair that makes the addition auditable. §6.4's `source_w = 0.75` finally has something to apply to. A suggested label that TURNS OUT to be in the document is `jd`, not `archetype`: the archetype found it, the company still said it. Matched deterministically rather than by embedding, and a weak or ambiguous title matches NOTHING |
 | FR-2.7 | 🟡 | Per-requirement gap with `not_measured` as a distinct state, `unmeasurable` as another, and `met_by_alternative` as a third. **Missing: the confidence discount** — §6.5 wants `confidence < 0.25 → not_measured`, and M04 publishes no standard error yet. |
 | FR-2.8 | 🟡 | **Landed 2026-08-27.** §6.5's solver: priority `weight × (1 − mastery)`, a guaranteed question per measurable must-have, the rest by marginal value per minute under `log(1 + q)`, capped at 4. Questions are priced by `measured_by` — 3.5 min verbal, 12 coding, 20 design — and a requirement measured several ways is priced at the dearest. **Missing: `rounds` as a structured list**, and the ILP fallback §6.5 names for infeasible must-have sets (`uncovered` + `suggestion` carry that case today). |
@@ -197,6 +197,50 @@ each is listed so it is not mistaken for an oversight.
   `None`", which is a coarser signal.
 - **M12/M17 for `measured_by: communication`** — the classification is made and
   nothing consumes it yet.
+
+---
+
+## 7b. The grounding gap — the module's real ceiling
+
+Established 2026-08-27 by reading M04's `concepts.yaml` rather than assuming.
+
+**M04 holds 120 concepts: 55 dsa, 50 cs_core, 15 communication.** Two are
+technology-shaped (`SQL Queries`, `NoSQL and When to Use It`). That is not a
+small ontology waiting to be grown into a large one — it is a deliberate
+catalogue of what an INTERVIEW TESTS. M02's own `extract.py` docstring has said
+so since it was written: *"the ontology holds interview concepts — binary
+search, normalisation, asking clarifying questions — not technologies."*
+
+So a JD's technology list will never ground, however long M04 runs, and three
+responses are available. They are not equally good:
+
+- ⬜ **Build a technology catalogue in M02.** 500–2,000 concepts with aliases,
+      parents, prerequisites. Directly attacks the gap — and it would be a
+      SECOND ontology, owned by the wrong module, diverging from M04's the way
+      `extract.py` and `safety.py` already diverge. This platform has measured
+      that cost twice in one day. **Not M02's to build.**
+- ⬜ **Map technology → competency.** "Kubernetes" is evidence of container
+      orchestration, distributed systems and networking — all of which are
+      already in M04's `cs_core`. This grounds a modern stack against the
+      ontology that exists, ages far better than a framework list, and is
+      testable in a way rote API knowledge is not. **The strongest option, and
+      it belongs to M04** as ontology edges, with M02 supplying the candidate
+      pairs it observes.
+- ✅ **Generate questions for the ungrounded (2026-08-27).** Done, to the
+      boundary of what M02 owns: a requirement the posting STATES, with a
+      `measured_by` round that could carry it, is `testable` and gets plan
+      budget with `grounded: false`. M05 generates from the requirement and the
+      line it was written on. Weaker than the graph — no mastery prior, no
+      adaptive ladder — and a real question about a real requirement.
+
+On the Cognizant brochure this moved the plan from **1 allocation / 14 minutes**
+to **16 allocations / 59.5 of 60 minutes, 0 untestable**.
+
+What M02 must NOT do, and the reason is ownership rather than difficulty: hold
+an ontology (M04), generate questions (M05), or build scoring rubrics (M13).
+What it CAN add next is the candidate-mining half — harvest requirement labels
+across parsed JDs, cluster them, and propose them to M04 with the postings that
+evidence each one. That is M02 feeding the ontology rather than forking it.
 
 ---
 

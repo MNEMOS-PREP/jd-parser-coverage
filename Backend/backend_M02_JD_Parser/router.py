@@ -652,6 +652,17 @@ def get_jd_coverage(jd_id: uuid.UUID, candidate_id: uuid.UUID, session: Session 
         "states": states,
         "mastery": mastery_by_label,
         "gap_severity": gap_severity,
+        # Two numbers, because one of them was doing both jobs badly.
+        #
+        # GROUNDED is what M04's concept graph can drive adaptively. TESTABLE
+        # is what a question can be put in front of the student for at all,
+        # including requirements M05 must generate from. On a modern posting
+        # the first is small and the second is nearly everything, and reporting
+        # only the first said "72 of 73 untestable" about a JD where 72 are
+        # perfectly askable.
+        "grounded_count": sum(1 for r in (jd.requirements or []) if r.get("grounded")),
+        "testable_count": sum(1 for r in (jd.requirements or []) if r.get("testable")),
+        "requirement_total": len(jd.requirements or []),
         # label -> the alternative that met the same requirement. A student
         # asking "why is nothing being said about Java?" gets an answer.
         "met_by_alternative": met_by_alternative,

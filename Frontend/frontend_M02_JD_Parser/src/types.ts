@@ -91,8 +91,27 @@ export interface Requirement {
   /** `null` because the posting did not say — never defaulted to `fresher`. */
   seniority_signal: string | null;
   concept_ids: string[];
-  /** False when nothing in the ontology corresponds to it. */
-  measurable: boolean;
+  /**
+   * A concept id exists, so M04 can supply mastery, prerequisites and an
+   * adaptive ladder.
+   *
+   * The rarer case, by design: M04's ontology is 120 INTERVIEW concepts — DSA,
+   * CS core, communication — and two of them are technology-shaped. A modern
+   * stack grounds almost nowhere, and that is not a gap in the ontology.
+   */
+  grounded: boolean;
+  /**
+   * A question can be put in front of the student at all.
+   *
+   * Grounded, or the posting states it at a real offset and `measured_by`
+   * names a round that could carry it — in which case M05 generates a question
+   * citing the line the company wrote. Weaker than grounded (no mastery prior,
+   * no adaptive ladder) and completely different from nothing.
+   *
+   * Reading "no concept id" as "unaskable" is what reported 72 of 73
+   * requirements untestable on a posting where 72 are perfectly askable.
+   */
+  testable: boolean;
   /** `m04` or `offline_fallback`; `null` when it mapped to nothing. */
   concept_source: ConceptSource | null;
   source: string;

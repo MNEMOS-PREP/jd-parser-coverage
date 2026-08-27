@@ -88,14 +88,17 @@ function CoverageRow({
           <span className="truncate text-sm text-ink">{label}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-ink-faint">
-            can&rsquo;t be tested here
-          </span>
+          {/* "Can't be tested here" was wrong, and wrong in the direction that
+              discourages: M04's ontology is 120 INTERVIEW concepts and two of
+              them are technology-shaped, so most of a modern stack is outside
+              it by design. Outside the concept graph means no mastery score
+              and no adaptive ladder — it does not mean no question. */}
+          <span className="text-xs text-ink-faint">no score on record</span>
           <Pill
             tone="neutral"
-            title="This requirement maps to no concept in the ontology, so no question can probe it and no score can be earned against it."
+            title="This requirement is outside M04's concept graph, so there is no mastery score for it and no adaptive difficulty. A question about it is still generated from the posting itself."
           >
-            unmapped
+            outside the graph
           </Pill>
         </div>
       </div>
