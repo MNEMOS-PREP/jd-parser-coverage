@@ -25,6 +25,7 @@ from typing import Any
 from ai_core.concepts import normalise_alias
 from ai_core.dependencies import DependencyRegistry, DependencyStatus
 from ai_core.identity import Principal, may_see, principal_from_headers
+from ai_core.mastery import SE_PRIOR
 from ai_core.models import USER_AGENT
 from fastapi import (
     APIRouter,
@@ -124,6 +125,38 @@ ADEQUATE_BELOW = 0.70
 #: failed. Spec §6.5: not_measured carries severity weight × 0.6 — we do not
 #: know, so we should probe — rather than the 1.0 that "missing" implied.
 NOT_MEASURED_SEVERITY = 0.6
+
+#: §6.5: *"state = not_measured if confidence < 0.25"*.
+#:
+#: Below this we have a number from M04 and no business acting on it. Reporting
+#: a mastery the estimator itself is unsure of is worse than reporting nothing,
+#: because a bar reads as a finding and "we asked you one question about this
+#: eighteen months ago" does not.
+MIN_CONFIDENCE = 0.25
+
+
+def confidence_from(se_effective: float | None) -> float | None:
+    """§6.5's `confidence = 1 - mean(standard_error)`, on the platform's scale.
+
+    Normalised by `SE_PRIOR` rather than by a literal, because that constant
+    already exists and means exactly the right thing: *"you cannot know less
+    than you knew before you had any data."* An SE at the prior is confidence 0;
+    an SE of 0 is confidence 1.
+
+    Writing 1.5 here instead would be a second definition of a number that has
+    one, and the day M04 retunes its prior this module would disagree with it
+    silently.
+
+    `None` when the upstream did not state an SE at all, and that is NOT the
+    same as zero. Zero means "M04 measured this and is completely unsure";
+    `None` means nobody said. Collapsing the two would take a real `mastery_p`
+    from an upstream that publishes no uncertainty and throw it away — Rule 2
+    says a missing field narrows scope, it does not destroy quality.
+    """
+    if se_effective is None:
+        return None
+    return max(0.0, min(1.0, 1.0 - (se_effective / SE_PRIOR)))
+
 
 #: A job description is a page or two. Anything past this is the wrong file,
 #: and reading it into memory before finding that out is how an upload endpoint
@@ -604,10 +637,37 @@ def get_jd_coverage(jd_id: uuid.UUID, candidate_id: uuid.UUID, session: Session 
         row["concept_id"]: row for row in (mastery or {}).get("measured", []) if "concept_id" in row
     }
 
+    confidence_by_label: dict[str, float] = {}
+
     for label, concept_id in jd.resolved_concepts.items():
         row = measured_map.get(concept_id)
         mastery_p = row.get("mastery_p") if row else None
+
+        # `se_effective`, not `se`. The first is what was persisted when the
+        # evidence arrived; the second is that widened by how long ago it
+        # arrived. M04's own comment says `se_effective` "is what every display
+        # rule uses", and a coverage plan is a display rule with a budget
+        # attached — a concept measured confidently eighteen months ago should
+        # be probed again, and `se` alone would call it settled.
+        se_effective = None
+        if row is not None:
+            se_effective = row.get("se_effective", row.get("se"))
+        confidence = confidence_from(se_effective)
+        if confidence is not None:
+            confidence_by_label[label] = round(confidence, 3)
         mastery_by_label[label] = mastery_p
+
+        # §6.5: *"not_measured if confidence < 0.25"*. A number the estimator
+        # is unsure of is worse than no number, because a bar reads as a
+        # finding and "we asked you one question about this a year ago" does
+        # not. This is the case the module could not previously see: M04
+        # answered, it had a `mastery_p`, and it should still not have been
+        # scored.
+        if mastery_p is not None and confidence is not None and confidence < MIN_CONFIDENCE:
+            not_measured.append(label)
+            states[label] = "not_measured"
+            gap_severity[label] = NOT_MEASURED_SEVERITY
+            continue
 
         if not m04_answered or mastery_p is None:
             # Either we never asked, or M04 declined to claim a number. Both
@@ -619,11 +679,14 @@ def get_jd_coverage(jd_id: uuid.UUID, candidate_id: uuid.UUID, session: Session 
         elif mastery_p < WEAK_BELOW:
             weak.append(label)
             states[label] = "weak"
-            gap_severity[label] = 1.0 - mastery_p
+            # §6.5: `severity = weight * (1 - mastery) * confidence_discount`.
+            # The weight is applied by the planner; this is the rest of it. A
+            # weakness we are only half sure of is half a weakness.
+            gap_severity[label] = round((1.0 - mastery_p) * (confidence or 1.0), 4)
         else:
             covered.append(label)
             states[label] = "adequate" if mastery_p < ADEQUATE_BELOW else "strong"
-            gap_severity[label] = max(0.0, 1.0 - mastery_p)
+            gap_severity[label] = round(max(0.0, 1.0 - mastery_p) * (confidence or 1.0), 4)
 
     # ------------------------------------------------------------------
     #  A choice is met by ONE of its answers (FR-2.3, FR-2.7)
@@ -692,6 +755,10 @@ def get_jd_coverage(jd_id: uuid.UUID, candidate_id: uuid.UUID, session: Session 
         "unmeasurable": unmeasurable,
         "states": states,
         "mastery": mastery_by_label,
+        # §6.5's confidence, per requirement. Exposed rather than folded
+        # away, because a student told a topic is 'not measured' when M04
+        # plainly has a number for it is owed the reason.
+        "confidence": confidence_by_label,
         "gap_severity": gap_severity,
         # Two numbers, because one of them was doing both jobs badly.
         #

@@ -105,6 +105,12 @@ function CoverageRow({
     );
   }
 
+  // §6.5's confidence, surfaced only where it is LOW. A student told a topic
+  // is "not measured" when M04 plainly holds a number for it is owed the
+  // reason, and a confidence printed beside every healthy bar is noise.
+  const confidence = coverage.confidence?.[label];
+  const shaky = confidence !== undefined && confidence < 0.4;
+
   const value: MasteryValue = {
     concept_id: conceptId ?? label,
     name: label,
@@ -128,6 +134,14 @@ function CoverageRow({
         />
       </div>
       <div className="flex items-center gap-3">
+        {shaky && (
+          <span
+            className="provenance"
+            title="M04 holds a number for this, but its own uncertainty is high — an old measurement, or a single question. §6.5 discounts a gap by how sure we are of it."
+          >
+            thin evidence
+          </span>
+        )}
         <MasteryBar value={value} width="w-32" />
       </div>
     </div>

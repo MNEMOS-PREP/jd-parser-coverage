@@ -1619,3 +1619,156 @@ def test_an_unmeasured_student_is_never_told_they_are_ready(client, m04_mastery)
     plan = _plan(client, jd_id, uuid.uuid4(), minutes=60)
 
     assert plan["difficulty"] != "final_boss"
+
+
+# ---------------------------------------------------------------------------
+#  FR-2.7 — §6.5's confidence discount
+# ---------------------------------------------------------------------------
+
+
+def test_a_mastery_the_estimator_is_unsure_of_is_not_measured(client, m04_mastery):
+    """§6.5: *"state = not_measured if confidence < 0.25"*.
+
+    The case M02 could not previously see: M04 answered, it HAS a `mastery_p`,
+    and it should still not be scored. Reporting a number the estimator is
+    unsure of is worse than reporting nothing, because a bar reads as a finding
+    and "we asked you one question about this eighteen months ago" does not.
+
+    The TODO recorded this as blocked on M04 publishing a standard error. M04
+    has published `se` and `se_effective` since it was written; nobody checked
+    the payload.
+    """
+    m04_mastery(
+        {
+            "measured": [
+                # se 1.4 against a prior of 1.5 — barely better than knowing
+                # nothing, which is exactly what §6.5's gate is for.
+                {"concept_id": "concept:sql_basics", "mastery_p": 0.85, "se_effective": 1.4},
+            ]
+        }
+    )
+    res = client.post(
+        "/v1/jds/parse",
+        json={
+            "company_name": "Acme",
+            "role_title": "Backend",
+            "raw_text": "Engineer\n\nRequirements:\n- SQL\n",
+        },
+    )
+    cov = client.get(f"/v1/jds/{res.json()['id']}/coverage/{uuid.uuid4()}").json()
+
+    assert cov["states"]["SQL"] == "not_measured", "a low-confidence number was scored"
+    assert cov["confidence"]["SQL"] < 0.25
+
+
+def test_a_confident_mastery_is_scored_normally(client, m04_mastery):
+    """The other side, so the gate cannot quietly widen and swallow real data."""
+    m04_mastery(
+        {
+            "measured": [
+                {"concept_id": "concept:sql_basics", "mastery_p": 0.85, "se_effective": 0.3},
+            ]
+        }
+    )
+    res = client.post(
+        "/v1/jds/parse",
+        json={
+            "company_name": "Acme",
+            "role_title": "Backend",
+            "raw_text": "Engineer\n\nRequirements:\n- SQL\n",
+        },
+    )
+    cov = client.get(f"/v1/jds/{res.json()['id']}/coverage/{uuid.uuid4()}").json()
+
+    assert cov["states"]["SQL"] == "strong"
+    assert cov["confidence"]["SQL"] == pytest.approx(0.8, abs=0.01)
+
+
+def test_a_weakness_we_are_half_sure_of_is_half_a_weakness(client, m04_mastery):
+    """§6.5: `severity = weight * (1 - mastery) * confidence_discount`.
+
+    The weight is applied by the planner; this is the rest of it. Without the
+    discount, a barely-measured weakness competes for interview minutes on
+    equal terms with one we have real evidence for.
+    """
+    m04_mastery(
+        {
+            "measured": [
+                {"concept_id": "concept:sql_basics", "mastery_p": 0.20, "se_effective": 0.75},
+            ]
+        }
+    )
+    res = client.post(
+        "/v1/jds/parse",
+        json={
+            "company_name": "Acme",
+            "role_title": "Backend",
+            "raw_text": "Engineer\n\nRequirements:\n- SQL\n",
+        },
+    )
+    cov = client.get(f"/v1/jds/{res.json()['id']}/coverage/{uuid.uuid4()}").json()
+
+    assert cov["states"]["SQL"] == "weak"
+    # (1 - 0.20) * (1 - 0.75/1.5) = 0.8 * 0.5
+    assert cov["gap_severity"]["SQL"] == pytest.approx(0.4, abs=0.01)
+
+
+def test_an_upstream_that_states_no_uncertainty_is_not_treated_as_certainly_wrong(
+    client, m04_mastery
+):
+    """Rule 2. `None` is not zero.
+
+    Zero means "M04 measured this and is completely unsure". `None` means
+    nobody said. Collapsing them would take a real `mastery_p` from an upstream
+    that publishes no uncertainty and throw it away — which is what the first
+    version of this did, and it turned six passing tests red.
+    """
+    m04_mastery({"measured": [{"concept_id": "concept:sql_basics", "mastery_p": 0.85}]})
+    res = client.post(
+        "/v1/jds/parse",
+        json={
+            "company_name": "Acme",
+            "role_title": "Backend",
+            "raw_text": "Engineer\n\nRequirements:\n- SQL\n",
+        },
+    )
+    cov = client.get(f"/v1/jds/{res.json()['id']}/coverage/{uuid.uuid4()}").json()
+
+    assert cov["states"]["SQL"] == "strong", "a stated mastery was discarded for lacking an SE"
+    assert "SQL" not in cov["confidence"], "confidence was invented for an upstream that gave none"
+
+
+def test_stale_evidence_widens_the_uncertainty_m02_reads(client, m04_mastery):
+    """`se_effective`, not `se`.
+
+    The first is what was persisted when the evidence arrived; the second is
+    that widened by how long ago it arrived. M04's own comment says
+    `se_effective` "is what every display rule uses", and a coverage plan is a
+    display rule with a budget attached — a concept measured confidently
+    eighteen months ago should be probed again.
+    """
+    m04_mastery(
+        {
+            "measured": [
+                # Confident when recorded, widened by age. The plan must read
+                # the widened one.
+                {
+                    "concept_id": "concept:sql_basics",
+                    "mastery_p": 0.85,
+                    "se": 0.2,
+                    "se_effective": 1.45,
+                },
+            ]
+        }
+    )
+    res = client.post(
+        "/v1/jds/parse",
+        json={
+            "company_name": "Acme",
+            "role_title": "Backend",
+            "raw_text": "Engineer\n\nRequirements:\n- SQL\n",
+        },
+    )
+    cov = client.get(f"/v1/jds/{res.json()['id']}/coverage/{uuid.uuid4()}").json()
+
+    assert cov["states"]["SQL"] == "not_measured", "read `se` instead of `se_effective`"

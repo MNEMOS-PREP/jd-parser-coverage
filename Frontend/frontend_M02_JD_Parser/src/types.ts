@@ -275,6 +275,14 @@ export interface Coverage {
   states: Record<string, GapState>;
   mastery: Record<string, number | null>;
   gap_severity: Record<string, number>;
+  /**
+   * §6.5's `confidence = 1 - mean(standard_error)`, per requirement.
+   *
+   * Keys are ABSENT where the upstream stated no uncertainty — which is not
+   * the same as a confidence of zero. Zero means M04 measured it and is
+   * completely unsure; absent means nobody said.
+   */
+  confidence: Record<string, number>;
   /** label -> the alternative that met the same requirement. */
   met_by_alternative: Record<string, string>;
   /** skill label -> concept_id, for the labels that resolved. */
