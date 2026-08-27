@@ -191,6 +191,14 @@ export interface JobDescription {
   /** Recorded even when the match was rejected, because "we looked and were
    *  not sure" is not the same as "we did not look". */
   archetype_confidence: number;
+  /**
+   * The roles this posting might be for, when it is for more than one.
+   *
+   * EC-2.14. Populated only when the archetype match REFUSED because two were
+   * too close to separate; empty otherwise, and empty is the signal that there
+   * was nothing to ask about.
+   */
+  role_candidates: { id: string; name: string; confidence: number }[];
   /** How many requirements came from the archetype rather than the posting. */
   inferred_count: number;
   /**
@@ -326,6 +334,22 @@ export interface CoverageAllocation {
   minutes: number;
 }
 
+/**
+ * §5 declares `rounds: list[PlannedRound]` and never defines the type.
+ *
+ * One round per MODALITY, because that is what a student sits — a coding round
+ * is a different room from an HR round — and because `measured_by` is what
+ * makes the distinction real. Before it existed every question was priced
+ * verbally and a round would have been one bucket holding everything.
+ */
+export interface PlannedRound {
+  round_type: string;
+  minutes: number;
+  question_count: number;
+  requirement_ids: string[];
+  difficulty: string;
+}
+
 export interface CoveragePlan {
   jd_id: string;
   candidate_id: string;
@@ -350,6 +374,13 @@ export interface CoveragePlan {
    * §3.2.1's trap 4 warns about, so it is said out loud.
    */
   saturated: boolean;
+  /** Ordered cheapest first, so the session reads as a warm-up into the hard
+   *  part rather than opening on twenty minutes of system design. */
+  rounds: PlannedRound[];
+  /** `diagnostic` | `calibrated` | `final_boss` (EC-2.9, EC-2.10). */
+  difficulty: string;
+  /** Why the band is what it is. Empty when it is the ordinary case. */
+  difficulty_note: string;
   plan_version: string;
 }
 

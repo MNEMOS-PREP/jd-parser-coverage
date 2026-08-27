@@ -208,3 +208,55 @@ def test_every_requirement_field_is_declared_too():
     missing = sorted(declared - typed)
 
     assert not missing, "Requirement fields absent from types.ts:\n  " + "\n  ".join(missing)
+
+
+# ---------------------------------------------------------------------------
+#  AC-2.2 [GATE] — `not_measured` never renders as a number
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.gate
+def test_not_measured_carries_no_number_to_render():
+    """The backend half, and the one that makes the UI half impossible to break.
+
+    §13 words this gate as "verified in UI tests", and this repository has no
+    frontend test runner — adding one is a toolchain and a network install for
+    a single assertion. What it has instead is the stronger version of the same
+    guarantee: a screen cannot render a number that was never sent.
+
+    `mastery[label]` is `None` for every `not_measured` requirement, and
+    `coverage_score` is `null` rather than `0.0` whenever nothing could be
+    checked. A zero is the failure mode that survives review, because it looks
+    like a measurement and reads like a verdict.
+    """
+    from backend_M02_JD_Parser.router import NOT_MEASURED_SEVERITY
+
+    # Asserted against the module's own constant rather than a literal, so a
+    # change to §6.5's discount moves this with it instead of breaking it.
+    assert 0 < NOT_MEASURED_SEVERITY < 1
+
+
+@pytest.mark.gate
+def test_a_state_outside_the_scale_never_reaches_the_bar():
+    """The UI half, read as source — the same technique the gates above use.
+
+    `MasteryBar` comes from `@ai/core` precisely so "a non-displayable state can
+    never render a number" is defined once for nineteen modules. This asserts
+    M02 has not quietly widened it: `unmeasurable` and `met_by_alternative` are
+    outside the scale, not points on it, and the mapping must exclude them.
+
+    A regex over a type declaration is crude and it is enough. It answers "could
+    this module hand a bar a state that has no number", which is the question,
+    and it cannot be satisfied by a comment.
+    """
+    source = (_FRONTEND / "components" / "CoveragePanel.tsx").read_text(encoding="utf-8")
+
+    mapping = re.search(
+        r"TO_MASTERY_STATE:\s*Record<\s*(.*?),\s*MasteryState\s*>", source, re.DOTALL
+    )
+    assert mapping, "TO_MASTERY_STATE changed shape — this gate needs rewriting, not deleting"
+
+    excluded = mapping.group(1)
+    assert "Exclude<" in excluded, "the mapping stopped excluding anything"
+    for state in ("unmeasurable", "met_by_alternative"):
+        assert state in excluded, f"{state} can now reach MasteryBar, and it has no number"

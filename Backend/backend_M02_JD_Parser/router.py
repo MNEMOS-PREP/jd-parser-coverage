@@ -40,7 +40,7 @@ from fastapi import (
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from backend_M02_JD_Parser.archetypes import ARCHETYPES, BY_ID, backfill_labels
+from backend_M02_JD_Parser.archetypes import ARCHETYPES, BY_ID, backfill_labels, candidates
 from backend_M02_JD_Parser.archetypes import match as match_archetype
 from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
 from backend_M02_JD_Parser.edits import ACTIONS, NECESSITY, RequirementEdit, effective
@@ -540,6 +540,12 @@ def parse_jd(
         unresolved_skills=unresolved,
         scanned_against=scanned_against,
         role_archetype=archetype.id if archetype else None,
+        # EC-2.14. `match` refused because two archetypes were too close, which
+        # is right and was silent. Naming them lets the screen ask.
+        role_candidates=[
+            {"id": a.id, "name": a.name, "confidence": c}
+            for a, c in (candidates(payload.role_title, text) if archetype is None else [])
+        ],
         archetype_confidence=confidence,
         # Counted from the RESULT, not from what was suggested: a suggested
         # label that turned out to be in the document is stated, not inferred.
@@ -761,6 +767,9 @@ def post_jd_plan(
         requirements=jd.requirements or [],
         states=coverage["states"],
         mastery=coverage["mastery"],
+        # EC-2.5. An HR interview does not open a coding round because the JD
+        # mentioned SQL in passing.
+        archetype=jd.role_archetype,
     )
 
 

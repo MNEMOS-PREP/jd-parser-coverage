@@ -74,6 +74,32 @@ export function PlanPanel({
         ))}
       </div>
 
+      {/* EC-2.9 and EC-2.10, which are the same field from opposite ends. A
+          plan that allocates identically whether a student is ready or has
+          never sat a session tells the first they have work to do and the
+          second that they are behind. Neither is true. */}
+      {plan.data?.difficulty_note && (
+        <div
+          className={
+            plan.data.difficulty === "final_boss"
+              ? "mb-3 rounded-md border border-confirmed-line bg-confirmed-soft px-3 py-2"
+              : "mb-3 rounded-md border border-line bg-surface-sunken px-3 py-2"
+          }
+        >
+          <p className="text-sm text-ink">{plan.data.difficulty_note}</p>
+        </div>
+      )}
+
+      {plan.data && plan.data.rounds.length > 1 && (
+        <p className="provenance mb-3">
+          {plan.data.rounds
+            .map(
+              (r) => `${r.question_count} ${r.round_type} · ${r.minutes} min`,
+            )
+            .join("   |   ")}
+        </p>
+      )}
+
       {plan.isLoading && <SkeletonRows rows={4} />}
       {plan.isError && (
         <ErrorNote>

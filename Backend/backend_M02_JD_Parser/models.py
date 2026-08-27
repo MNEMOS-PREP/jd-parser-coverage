@@ -124,6 +124,14 @@ class JobDescription(SQLModel, table=True):
     role_archetype: str | None = Field(default=None)
     archetype_confidence: float = Field(default=0.0)
 
+    #: The roles this posting might be for, when it is for more than one.
+    #:
+    #: EC-2.14: *"Two roles in one JD ('SDE or QA') — detect, ask the student
+    #: which, default to the first."* Populated only when the archetype match
+    #: REFUSED because two were too close; empty in the ordinary case, and
+    #: empty is the signal that there was nothing to ask about.
+    role_candidates: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
+
     #: How many requirements came from the archetype rather than the posting
     #: (§5, `inferred_count`). Kept as a number as well as being derivable from
     #: `requirements`, because it is what the UI branches on to say "we filled

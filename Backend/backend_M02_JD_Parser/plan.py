@@ -81,7 +81,20 @@ _ROUND_FOR = {
 }
 
 
-def round_for(measured: list[str]) -> str:
+#: Archetypes whose interviews do not include a coding or design round.
+#:
+#: EC-2.5: *"Non-technical role (HR, Sales) — technical rounds dropped."* Their
+#: requirement sets are already behavioural, so nothing coding-shaped is
+#: normally allocated. What this covers is the posting that MENTIONS SQL in
+#: passing: an HR executive's interview does not open a twelve-minute coding
+#: round because the JD said "familiarity with Excel and SQL", and pricing one
+#: would promise a session that company never runs.
+NON_TECHNICAL_ARCHETYPES = frozenset(
+    {"hr_recruiter", "sales_bd", "support_engineer", "consultant", "business_analyst"}
+)
+
+
+def round_for(measured: list[str], *, archetype: str | None = None) -> str:
     """The round a requirement needs, priced at the DEAREST of its modes.
 
     "DSA and system design" is measured by both coding and design. Pricing it as
@@ -90,6 +103,11 @@ def round_for(measured: list[str]) -> str:
     nothing downstream re-checks the arithmetic.
     """
     rounds = {_ROUND_FOR.get(mode, "verbal") for mode in measured} or {"verbal"}
+    if archetype in NON_TECHNICAL_ARCHETYPES:
+        # EC-2.5. Not "score it lower" — dropped. This company does not run a
+        # coding round, so a plan that budgets twelve minutes for one is
+        # describing an interview that will not happen.
+        rounds = {"verbal"}
     return max(rounds, key=lambda name: MINUTES_PER_QUESTION[name])
 
 
@@ -137,6 +155,38 @@ class CoverageAllocation(BaseModel):
     minutes: float
 
 
+#: §6.5's difficulty bands, named for what they tell the student.
+#:
+#: Derived from the mastery behind the allocations rather than set by a
+#: caller, because the whole point of EC-2.9 and EC-2.10 is that the plan
+#: NOTICES. A plan that allocates identically whether a student is ready or
+#: has never sat a session is telling the first they have work to do and the
+#: second that they are behind. Neither is true and both discourage.
+DIAGNOSTIC = "diagnostic"
+CALIBRATED = "calibrated"
+FINAL_BOSS = "final_boss"
+
+
+class PlannedRound(BaseModel):
+    """§5 declares `rounds: list[PlannedRound]` and never defines the type.
+
+    So the fields are chosen here: one round per MODALITY, because that is what
+    a student actually sits — a coding round is a different room from an HR
+    round — and because `measured_by` is what makes the distinction real. Before
+    it landed, every question was priced verbally and a "round" would have been
+    one bucket holding everything.
+    """
+
+    round_type: str
+    #: Minutes this round consumes. Sums to the plan's `allocated_minutes`.
+    minutes: float
+    question_count: int
+    #: `Requirement.id`s this round covers, in allocation order.
+    requirement_ids: list[str] = Field(default_factory=list)
+    #: `diagnostic` | `calibrated` | `final_boss`, from the mastery behind it.
+    difficulty: str = CALIBRATED
+
+
 class CoveragePlan(BaseModel):
     """§5's `CoveragePlan`, minus the fields that need modules M02 has not met.
 
@@ -164,6 +214,20 @@ class CoveragePlan(BaseModel):
     #: Set when the must-haves alone exceed the budget. EC-2.11 requires the
     #: suggestion, not just the omission.
     suggestion: str | None = None
+    #: §5's `rounds`. One per modality, ordered by the time they take, so the
+    #: session reads as a sequence rather than a set.
+    rounds: list[PlannedRound] = Field(default_factory=list)
+    #: The band the whole plan sits in, and the reason it does.
+    #:
+    #: EC-2.9 and EC-2.10 are this field seen from opposite ends: a student who
+    #: is strong everywhere and a student with no history both get an
+    #: undifferentiated plan without it, and both are told something false.
+    difficulty: str = CALIBRATED
+    #: One sentence saying why the band is what it is. §12 asks for the copy by
+    #: name in both cases, and copy that lives in the frontend is copy the
+    #: backend cannot keep true.
+    difficulty_note: str = ""
+
     #: Every requirement is at its four-question cap and minutes are left over.
     #:
     #: At that point the plan genuinely IS the same for every student — there
@@ -239,6 +303,51 @@ def _rationale(necessity: str, state: str, questions: int, grounded: bool) -> st
     return f"{necessity}-have, {gap}"
 
 
+def _band(
+    allocations: list[CoverageAllocation],
+    states: dict[str, str],
+) -> tuple[str, str]:
+    """Which difficulty band this plan is in, and why (EC-2.9, EC-2.10).
+
+    Read off the mastery behind the allocations rather than passed in. A plan
+    that allocates identically whether a student is ready or has never sat a
+    session tells the first they have work to do and the second that they are
+    behind — neither true, both discouraging.
+
+    `diagnostic` wins ties with `final_boss` on purpose: a student with no
+    history has nothing measured, and "you're ready" said to somebody we have
+    never tested is a guess dressed as praise.
+    """
+    if not allocations:
+        return CALIBRATED, ""
+
+    seen = [states.get(a.requirement_text, "not_measured") for a in allocations]
+    measured = [s for s in seen if s in {"strong", "adequate", "weak"}]
+
+    if not measured:
+        return (
+            DIAGNOSTIC,
+            "Nothing here has been measured yet, so this session is broad rather than deep — "
+            "it is finding out where you stand, not testing what we already know.",
+        )
+
+    if all(s == "strong" for s in measured) and len(measured) == len(seen):
+        return (
+            FINAL_BOSS,
+            "You are strong on everything this posting asks for. This session goes harder than "
+            "the job needs — it is looking for your ceiling rather than your gaps.",
+        )
+
+    if sum(1 for s in measured if s == "strong") >= max(1, int(0.8 * len(seen))):
+        return (
+            FINAL_BOSS,
+            "You are strong on most of what this posting asks for, so this session leans hard "
+            "rather than broad.",
+        )
+
+    return CALIBRATED, ""
+
+
 def build_plan(
     *,
     jd_id: str,
@@ -247,6 +356,7 @@ def build_plan(
     requirements: list[dict],
     states: dict[str, str],
     mastery: dict[str, float | None],
+    archetype: str | None = None,
 ) -> CoveragePlan:
     """Allocate `total_minutes` of interview across the requirements.
 
@@ -286,7 +396,9 @@ def build_plan(
     # `measured_by`: a coding question is twelve minutes and a verbal one is
     # three and a half, and pricing them the same oversold a 45-minute session
     # by a factor of three.
-    rounds = {r["id"]: round_for(r.get("measured_by") or []) for r in considered}
+    rounds = {
+        r["id"]: round_for(r.get("measured_by") or [], archetype=archetype) for r in considered
+    }
     cost = {rid: MINUTES_PER_QUESTION[name] for rid, name in rounds.items()}
 
     priorities: dict[str, float] = {}
@@ -383,6 +495,30 @@ def build_plan(
         and len(allocations) == len(considered)
     )
 
+    # ------------------------------------------------------------------
+    #  §5's rounds, and §6.5's difficulty band (EC-2.9, EC-2.10)
+    # ------------------------------------------------------------------
+    by_round: dict[str, list[CoverageAllocation]] = {}
+    for allocation in allocations:
+        by_round.setdefault(allocation.round_type, []).append(allocation)
+
+    rounds = [
+        PlannedRound(
+            round_type=name,
+            minutes=round(sum(a.minutes for a in group), 2),
+            question_count=sum(a.question_budget for a in group),
+            requirement_ids=[a.requirement_id for a in group],
+        )
+        for name, group in by_round.items()
+    ]
+    # Cheapest first, so the session reads as a warm-up into the hard part
+    # rather than opening on twenty minutes of system design.
+    rounds.sort(key=lambda r: MINUTES_PER_QUESTION.get(r.round_type, 0))
+
+    difficulty, difficulty_note = _band(allocations, states)
+    for planned in rounds:
+        planned.difficulty = difficulty
+
     suggestion = None
     if uncovered:
         needed = math.ceil(sum(cost[rid] for rid in uncovered))
@@ -422,4 +558,7 @@ def build_plan(
         unmeasurable=unmeasurable,
         suggestion=suggestion,
         saturated=saturated,
+        rounds=rounds,
+        difficulty=difficulty,
+        difficulty_note=difficulty_note,
     )

@@ -597,6 +597,36 @@ def match(title: str, body: str = "") -> tuple[Archetype | None, float]:
     return best, round(best_score, 3)
 
 
+def candidates(title: str, body: str = "") -> list[tuple[Archetype, float]]:
+    """Every archetype that scores well enough to be worth offering (EC-2.14).
+
+    *"Two roles in one JD ('SDE or QA') — detect, ask the student which,
+    default to the first."*
+
+    `match` already refuses this case: two archetypes inside `MIN_MARGIN` of
+    each other and it returns None rather than tossing a coin. Correct, and
+    SILENT — the student got no backfill, no explanation, and no way to say
+    which role they are actually sitting.
+
+    This is the other half of a decision already being made. The matcher knows
+    it was ambiguous; it was only failing to say so. Ordered best first, so
+    "default to the first" is the caller doing nothing.
+    """
+    scored = sorted(
+        ((archetype, _score(archetype, title, body)) for archetype in ARCHETYPES),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
+    viable = [(a, round(sc, 3)) for a, sc in scored if sc >= MIN_CONFIDENCE]
+    if len(viable) < 2:
+        return []
+    # Only the ones genuinely in contention. A third archetype trailing by 0.3
+    # is not a role this posting is offering, and listing it would turn a real
+    # question into a menu.
+    top = viable[0][1]
+    return [pair for pair in viable if top - pair[1] < MIN_MARGIN]
+
+
 def backfill_labels(archetype: Archetype, existing: list[str]) -> list[str]:
     """Archetype requirements to ADD, given what the posting already stated.
 

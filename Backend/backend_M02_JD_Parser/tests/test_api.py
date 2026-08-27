@@ -1534,3 +1534,88 @@ def test_performance_reports_p95_per_stage_against_the_budget(client, m04):
         # parses is not a p95 and the reader has to be able to see that.
         assert row["samples"] >= 1
         assert row["within_budget"] == (row["p95_ms"] <= row["budget_ms"])
+
+
+# ---------------------------------------------------------------------------
+#  FR-2.8's rounds, and the two edge cases that are the same mechanism
+# ---------------------------------------------------------------------------
+
+
+def test_the_plan_is_a_sequence_of_rounds(client, m04_mastery):
+    """§5 declares `rounds` and never defines `PlannedRound`.
+
+    One per MODALITY, because that is what a student sits — a coding round is a
+    different room from an HR round — and `measured_by` is what made the
+    distinction real. Before it, everything was priced verbally and a round
+    would have been one bucket holding everything.
+    """
+    m04_mastery({"measured": []})
+    jd_id = _parse_for_plan(client)
+
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=90)
+
+    assert plan["rounds"], "no rounds"
+    assert sum(r["minutes"] for r in plan["rounds"]) == pytest.approx(
+        plan["allocated_minutes"], abs=0.01
+    )
+    assert sum(r["question_count"] for r in plan["rounds"]) == sum(
+        a["question_budget"] for a in plan["allocations"]
+    )
+    # Cheapest first, so a session opens on a warm-up rather than on twenty
+    # minutes of system design.
+    costs = [
+        {"verbal": 3.5, "coding": 12.0, "design": 20.0}[r["round_type"]] for r in plan["rounds"]
+    ]
+    assert costs == sorted(costs)
+
+
+def test_no_history_says_the_session_is_a_diagnostic(client, m04_mastery):
+    """EC-2.10: *"all gaps not_measured; plan is broad-coverage diagnostic;
+    copy explains why."*
+
+    The state was already right. The copy did not exist, so a student on their
+    first day read a plan identical to one built for somebody we had measured
+    ten times.
+    """
+    m04_mastery({"measured": []})
+    jd_id = _parse_for_plan(client)
+
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=60)
+
+    assert plan["difficulty"] == "diagnostic"
+    assert "measured" in plan["difficulty_note"]
+
+
+def test_strong_everywhere_goes_looking_for_the_ceiling(client, m04_mastery):
+    """EC-2.9: *"you're ready — let's find your ceiling."*"""
+    m04_mastery(
+        {
+            "measured": [
+                {"concept_id": "concept:dynamic_programming", "mastery_p": 0.95},
+                {"concept_id": "concept:recursion", "mastery_p": 0.93},
+                {"concept_id": "concept:sql_basics", "mastery_p": 0.91},
+                {"concept_id": "concept:hashing", "mastery_p": 0.92},
+            ]
+        }
+    )
+    jd_id = _parse_for_plan(client)
+
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=90)
+
+    assert plan["difficulty"] == "final_boss"
+    assert "ceiling" in plan["difficulty_note"] or "harder" in plan["difficulty_note"]
+
+
+def test_an_unmeasured_student_is_never_told_they_are_ready(client, m04_mastery):
+    """`diagnostic` beats `final_boss` on a tie, deliberately.
+
+    "You're ready" said to somebody nobody has tested is a guess dressed as
+    praise, and it is the more damaging of the two errors: it stops a student
+    preparing.
+    """
+    m04_mastery({"measured": []})
+    jd_id = _parse_for_plan(client)
+
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=60)
+
+    assert plan["difficulty"] != "final_boss"

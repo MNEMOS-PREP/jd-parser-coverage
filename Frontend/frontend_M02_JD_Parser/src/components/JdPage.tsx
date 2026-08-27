@@ -168,6 +168,40 @@ export function JdPage() {
         </div>
       )}
 
+      {/* EC-2.14: *"Two roles in one JD ('SDE or QA') — detect, ask the
+          student which, default to the first."*
+
+          The matcher already refused this case — two archetypes inside the
+          margin and it returns nothing rather than tossing a coin — and the
+          refusal was silent. Asking is the other half of a decision that was
+          already being made. */}
+      {data.role_candidates.length > 1 && (
+        <div className="mb-6 rounded-md border border-reported-line bg-reported-soft px-4 py-3">
+          <p className="text-sm text-ink">
+            <span className="font-medium">
+              This posting reads as more than one role.
+            </span>{" "}
+            We did not guess, because guessing decides which eight requirements
+            get filled in. Pick the one you are sitting:
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {data.role_candidates.map((candidate) => (
+              <a
+                key={candidate.id}
+                href={`/?role=${candidate.id}`}
+                className="rounded-md border border-line bg-surface px-3 py-1.5 text-sm text-ink-soft hover:border-brand hover:text-brand"
+              >
+                {candidate.name}
+              </a>
+            ))}
+          </div>
+          <p className="provenance mt-2">
+            Until you pick, nothing is inferred — the requirements below are
+            only what the posting states.
+          </p>
+        </div>
+      )}
+
       <EligibilityBanner eligibility={data.eligibility} />
 
       {/* The offer, not the analysis. FR-2.15's sentence — "you have 7.2,
