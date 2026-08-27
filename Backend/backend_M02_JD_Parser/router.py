@@ -23,10 +23,21 @@ from ai_core.concepts import normalise_alias
 from ai_core.dependencies import DependencyRegistry, DependencyStatus
 from ai_core.identity import Principal, may_see, principal_from_headers
 from ai_core.models import USER_AGENT
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
 from backend_M02_JD_Parser.match import MatchReport, build_match
 from backend_M02_JD_Parser.models import JobDescription
 from backend_M02_JD_Parser.plan import CoveragePlan, build_plan
@@ -102,6 +113,11 @@ ADEQUATE_BELOW = 0.70
 #: failed. Spec §6.5: not_measured carries severity weight × 0.6 — we do not
 #: know, so we should probe — rather than the 1.0 that "missing" implied.
 NOT_MEASURED_SEVERITY = 0.6
+
+#: A job description is a page or two. Anything past this is the wrong file,
+#: and reading it into memory before finding that out is how an upload endpoint
+#: becomes a way to exhaust the server.
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 
 @lru_cache(maxsize=1)
@@ -671,4 +687,53 @@ def get_jd_match(
         eligibility=jd.eligibility or {},
         requirements=jd.requirements or [],
         groups=jd.requirement_groups or [],
+    )
+
+
+@router.post("/jds/upload", response_model=JobDescription, status_code=status.HTTP_201_CREATED)
+async def upload_jd(
+    response: Response,
+    company_name: str = Form(...),
+    role_title: str = Form(...),
+    file: UploadFile = File(...),
+    session: Session = Depends(get_db),
+):
+    """A job description as a PDF, .docx or .txt (FR-2.1).
+
+    §1 calls the input *"usually a badly formatted blob from a placement-portal
+    email"*, and until now the only way in was `raw_text` — which assumes the
+    student can select the text. A placement-cell mail arrives as an attachment
+    at least as often as it arrives as a body.
+
+    Converts to text and then calls `parse_jd`, rather than reimplementing the
+    pipeline for uploads. Two entry points with two pipelines is how one of them
+    quietly stops getting the extraction fixes: this route has no parsing logic
+    of its own, so a JD pasted and the same JD uploaded produce byte-identical
+    rows — and the content hash proves it, because the second one comes back
+    200 from the cache rather than 201.
+    """
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,  # CONTENT_TOO_LARGE; the named constant was renamed under us
+            detail=(
+                f"That file is {len(data) // 1_000_000} MB. A job description is a page or two — "
+                "if it is bigger than that, it is probably the wrong file."
+            ),
+        )
+
+    try:
+        text = to_text(data, file.filename)
+    except UnreadableDocument as error:
+        # 422 with the sentence the document layer wrote, because the fix
+        # differs per cause and only that layer knows which cause it was.
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),  # UNPROCESSABLE_CONTENT
+        ) from error
+
+    return parse_jd(
+        JdParseIn(company_name=company_name, role_title=role_title, raw_text=text),
+        response,
+        session,
     )

@@ -19,6 +19,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@ai/core";
+import { identityHeaders } from "./components/candidate";
 import type {
   Coverage,
   CoveragePlan,
@@ -165,5 +166,56 @@ export function useMatch(
     enabled: Boolean(jdId && candidateId),
     retry: false,
     queryFn: () => api.get<MatchReport>(`/v1/jds/${jdId}/match/${candidateId}`),
+  });
+}
+
+/**
+ * A job description as a PDF, .docx or .txt (FR-2.1).
+ *
+ * A raw `fetch`, because `api.post` sends JSON and multipart needs the browser
+ * to set its own `Content-Type` with the boundary. That means the identity
+ * headers have to be attached BY HAND — the exact hole that answered 403 to
+ * every upload in M01 the day identity landed, and the reason
+ * `test_every_raw_fetch_in_the_client_sends_identity` exists.
+ *
+ * The JD routes are ungated on purpose (a posting is the company's, not the
+ * student's), so this would work without them today. They are sent anyway: the
+ * day one of these routes becomes candidate-scoped, the failure would be a 403
+ * on upload and nothing else, and nobody would connect it to this line.
+ */
+export function useUploadJd() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      company_name: string;
+      role_title: string;
+      file: File;
+    }) => {
+      const body = new FormData();
+      body.append("company_name", input.company_name);
+      body.append("role_title", input.role_title);
+      body.append("file", input.file);
+
+      // Relative, like every `api.*` call: the dev server proxies /v1 to the
+      // backend and production serves both from one origin. An absolute URL
+      // here would work in dev and break the moment it is deployed.
+      const res = await fetch("/v1/jds/upload", {
+        method: "POST",
+        headers: identityHeaders(),
+        body,
+      });
+      if (!res.ok) {
+        // The backend writes a sentence the student can act on — "that is a
+        // zip, upload the PDF inside it". Replacing it with "Upload failed"
+        // throws away the only part that tells them what to do.
+        const detail = await res.json().catch(() => null);
+        throw new Error(detail?.detail ?? `Upload failed (${res.status})`);
+      }
+      return (await res.json()) as JobDescription;
+    },
+    onSuccess: (jd) => {
+      qc.setQueryData(m02Keys.jd(jd.id), jd);
+      qc.invalidateQueries({ queryKey: m02Keys.deps });
+    },
   });
 }

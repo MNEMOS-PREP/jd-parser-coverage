@@ -11,19 +11,23 @@
  * a self-inflicted wound" — and it calls the campus-drive chips the
  * highest-value element on the screen.
  *
- * Only door 2 exists, because only door 2 has a backend. `POST /v1/jds/parse`
- * takes text; there is no company picker, no role archetype, and no drives
- * feed. Rendering the other two doors greyed out would be the honest-looking
- * version of the same problem — a student clicks, nothing happens, and the
- * product looks broken rather than unfinished. So they are named in a note
- * instead, which is what the platform does everywhere else: absent, not
- * stubbed, and said out loud.
+ * Door 2 now takes a FILE as well as pasted text (FR-2.1), which is the half
+ * of it that was missing: §1 calls the input "usually a badly formatted blob
+ * from a placement-portal email", and such a mail arrives as an attachment at
+ * least as often as it arrives as a body a student can select.
+ *
+ * Doors 1 and 3 still do not exist, because neither has a backend — there is no
+ * company picker, no role archetype and no drives feed. Rendering them greyed
+ * out would be the honest-looking version of the same problem: a student
+ * clicks, nothing happens, and the product looks broken rather than unfinished.
+ * So they are named in a note instead, which is what the platform does
+ * everywhere else — absent, not stubbed, and said out loud.
  */
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useParseJd } from "../api";
+import { useParseJd, useUploadJd } from "../api";
 import {
   Btn,
   ErrorNote,
@@ -44,6 +48,8 @@ Bond: 18 months`;
 export function ParsePage() {
   const navigate = useNavigate();
   const parse = useParseJd();
+  const upload = useUploadJd();
+  const [dragging, setDragging] = useState(false);
 
   const [company, setCompany] = useState("");
   const [role, setRole] = useState("");
@@ -51,6 +57,27 @@ export function ParsePage() {
 
   const canSubmit =
     company.trim() && role.trim() && text.trim() && !parse.isPending;
+
+  /**
+   * Upload, refusing early when the company and role are blank.
+   *
+   * They are two thirds of the content hash (FR-2.12), so an upload without
+   * them would either 422 from the backend after the file had been read, or —
+   * worse, if they were defaulted — merge two different drives at the same firm
+   * into one cached parse.
+   */
+  function sendFile(file: File) {
+    if (!company.trim() || !role.trim()) {
+      window.alert(
+        "Fill in the company and role first — they identify the posting.",
+      );
+      return;
+    }
+    upload.mutate(
+      { company_name: company.trim(), role_title: role.trim(), file },
+      { onSuccess: (jd) => navigate(`/jds/${jd.id}`) },
+    );
+  }
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -94,8 +121,69 @@ export function ParsePage() {
               />
             </div>
 
+            {/* The file door. Above the textarea rather than beside it,
+                because a student holding an attachment should not have to read
+                past a 12-row text box to find out they can just drop it. */}
+            <div>
+              <p className="rule-label mb-1.5">Job description</p>
+              <label
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragging(false);
+                  const dropped = event.dataTransfer.files?.[0];
+                  if (dropped) sendFile(dropped);
+                }}
+                className={`flex cursor-pointer flex-wrap items-center justify-center gap-2 rounded-md border border-dashed px-4 py-4 text-sm transition-colors ${
+                  dragging
+                    ? "border-brand bg-brand-soft text-brand"
+                    : "border-line text-ink-soft hover:border-ink-faint hover:text-ink"
+                }`}
+              >
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt,application/pdf,text/plain"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const picked = event.target.files?.[0];
+                    if (picked) sendFile(picked);
+                    event.target.value = "";
+                  }}
+                />
+                {upload.isPending ? (
+                  <span>Reading the file&hellip;</span>
+                ) : (
+                  <>
+                    <span className="font-medium">
+                      Drop a PDF, .docx or .txt
+                    </span>
+                    <span className="text-ink-faint">
+                      or click to choose one
+                    </span>
+                  </>
+                )}
+              </label>
+              <p className="mt-1.5 text-xs text-ink-faint">
+                Needs the company and role above first &mdash; they are part of
+                what identifies this posting, so two drives at the same firm do
+                not collapse into one.
+              </p>
+            </div>
+
+            {upload.isError && (
+              <ErrorNote>
+                {upload.error instanceof Error
+                  ? upload.error.message
+                  : "Upload failed"}
+              </ErrorNote>
+            )}
+
             <TextArea
-              label="Job description"
+              label="Or paste it"
               hint="Any format. Forwarded emails, signatures and eligibility tables are fine."
               value={text}
               onChange={(e) => setText(e.target.value)}

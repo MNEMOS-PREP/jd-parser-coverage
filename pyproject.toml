@@ -11,6 +11,12 @@ dependencies = [
     "fastapi>=0.115",
     "sqlmodel>=0.0.22",
     "uvicorn[standard]>=0.30",
+    # FR-2.1. Not optional: the spec requires PDF and DOCX alongside pasted
+    # text, and a placement-cell email arrives as an attachment at least as
+    # often as it arrives as a body a student can select.
+    "pymupdf>=1.24",          # the text layer of a PDF
+    "python-docx>=1.1",       # .docx paragraphs and tables
+    "python-multipart>=0.0.9",  # what FastAPI needs to read an upload at all
     "ai-core @ git+https://github.com/MNEMOS-PREP/Platform_Core@v0.9.1#subdirectory=python",
 ]
 
