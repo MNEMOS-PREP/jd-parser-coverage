@@ -12,6 +12,10 @@
  * are different numbers that would be confused instantly if they shared a
  * visual language. A requirement can be strong and still earn questions,
  * because the posting leans on it.
+ *
+ * Each row names its round, because the price is the surprising part: four DSA
+ * questions is 48 minutes and four questions about Docker is 14, and a student
+ * looking at "4 Q" on two rows would otherwise read them as the same ask.
  */
 
 import { useState } from "react";
@@ -108,7 +112,8 @@ export function PlanPanel({
                       )}
                     </span>
                     <span className="provenance">
-                      {allocation.question_budget} Q · {allocation.minutes} min
+                      {allocation.question_budget} Q · {allocation.round_type} ·{" "}
+                      {allocation.minutes} min
                     </span>
                   </span>
                 </div>
@@ -175,11 +180,17 @@ export function PlanPanel({
             Without that, the whole session collapses onto the single worst gap.
           </p>
           <p>
-            Every question is costed at 3.5 minutes, because nothing yet says
-            which requirements need a coding or design round &mdash; that is{" "}
-            <code className="provenance">measured_by</code>, still unbuilt. So
-            the priorities here are real and the <em>shape</em> of the session
-            is not: treat the minutes as a rough floor.
+            Questions are priced by what would actually test them: 3.5 minutes
+            for a verbal answer, 12 for a coding one, 20 for design. That is why
+            a session full of DSA holds so much less than it looks like it
+            should &mdash; and why it used to overpromise, when everything here
+            was priced as a three-minute chat.
+          </p>
+          <p>
+            A requirement nothing can measure gets no questions and is listed
+            separately. &ldquo;Go-getter attitude&rdquo; is something the
+            posting asked for and no round here can produce evidence about, so
+            spending your minutes on it would buy nothing.
           </p>
           <Pill tone="neutral">
             {plan.data?.plan_version ?? "greedy-log-v1"}

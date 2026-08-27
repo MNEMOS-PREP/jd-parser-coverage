@@ -78,6 +78,18 @@ export interface Requirement {
    * most requirements. A member is one acceptable answer, not a demand.
    */
   group_id: string | null;
+  /** `hard_skill` | `soft_skill` | `tool` | `domain` | `qualification`. */
+  kind: string;
+  /**
+   * How this platform could produce evidence about it.
+   *
+   * EMPTY is a real answer, not a gap in a lexicon (§3.2.1 trap 3):
+   * "go-getter attitude" is something the posting asked for and nothing here
+   * can test, and saying so beats faking a score for it.
+   */
+  measured_by: string[];
+  /** `null` because the posting did not say — never defaulted to `fresher`. */
+  seniority_signal: string | null;
   concept_ids: string[];
   /** False when nothing in the ontology corresponds to it. */
   measurable: boolean;

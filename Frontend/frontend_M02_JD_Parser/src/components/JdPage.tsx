@@ -169,9 +169,23 @@ export function JdPage() {
               why a slashed requirement can appear here whole.
             </p>
             <p>
-              Still absent: <code className="provenance">kind</code>,{" "}
+              <code className="provenance">kind</code>,{" "}
               <code className="provenance">measured_by</code> and{" "}
-              <code className="provenance">seniority_signal</code>.
+              <code className="provenance">seniority_signal</code> are read now,
+              from a lexicon rather than a model &mdash; deterministic, and the
+              fallback that has to exist behind §6.2&rsquo;s extraction call
+              anyway. <code className="provenance">measured_by</code> prices a
+              coding question at 12 minutes against a verbal one at 3.5, so the
+              coverage plan below has stopped pretending every question takes
+              the same time.
+            </p>
+            <p>
+              A requirement marked <em>nothing can test this</em> is
+              §3.2.1&rsquo;s third tier: &ldquo;communication&rdquo; maps to
+              constructs M12 and M17 measure, &ldquo;team player&rdquo; to a
+              behavioural round, and &ldquo;go-getter attitude&rdquo; to nothing
+              at all. It stays on the list because the company asked for it; it
+              earns no questions because no answer to one could be scored.
             </p>
             <p>
               Eligibility (CGPA cutoff, backlogs, batch, bond) IS extracted now
@@ -371,6 +385,14 @@ function RequirementRow({
             title="Repetition is emphasis — a posting that says it three times means it"
           >
             &times;{requirement.mentions}
+          </span>
+        )}
+        {requirement.measured_by.length === 0 && (
+          <span
+            className="provenance ml-2"
+            title="No round in this platform can produce evidence about this, so no question will be asked about it and no score can be earned against it."
+          >
+            nothing can test this
           </span>
         )}
         {!compact && requirement.span && (

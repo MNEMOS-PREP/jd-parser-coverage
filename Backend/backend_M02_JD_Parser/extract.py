@@ -71,6 +71,8 @@ from typing import Any
 from ai_core.concepts import normalise_alias
 from pydantic import BaseModel, Field, computed_field
 
+from backend_M02_JD_Parser.classify import kind_of, measured_by, seniority_of
+
 #: Longer than this and it is a sentence, not a skill. Five words admits
 #: "object oriented programming in java" and rejects a project bullet.
 MAX_WORDS = 5
@@ -470,12 +472,16 @@ class SourceSpan(BaseModel):
 class Requirement(BaseModel):
     """One thing the posting asks for, and where it says so.
 
-    A partial §5 `Requirement`. `kind`, `measured_by` and `seniority_signal`
-    are not here yet and are absent rather than defaulted.
+    §5's `Requirement`, complete as of 2026-08-27.
 
-    `necessity` and `weight` ARE derived now — see `necessity_at` and §6.4's
-    formula below. They were the two the coverage plan allocates on, which is
-    why they came first.
+    `necessity` and `weight` came first, because they are what the coverage plan
+    allocates ON. `kind`, `measured_by` and `seniority_signal` came second,
+    because `measured_by` is what lets the plan price a coding question at
+    twelve minutes instead of pricing everything the same.
+
+    All of them are derived deterministically, from the posting's own words.
+    §6.2 puts extraction behind a structured-output LLM call eventually; that
+    call has to have a fallback anyway, and this is it.
     """
 
     id: str
@@ -490,6 +496,17 @@ class Requirement(BaseModel):
     #: The `RequirementGroup` this is one alternative of, when the posting
     #: offered a choice. `None` for the ordinary case, which is most of them.
     group_id: str | None = None
+    #: §5's `kind`: hard_skill, soft_skill, tool, domain or qualification.
+    kind: str = "hard_skill"
+    #: How this platform could produce evidence about it. EMPTY is a real
+    #: answer (§3.2.1 trap 3): "go-getter attitude" is a requirement the
+    #: posting made and nothing here can test, and saying so is the point.
+    measured_by: list[str] = Field(default_factory=list)
+    #: `intern` | `fresher` | `junior` | `mid` | `senior`, or `None` because
+    #: the posting did not say. Never defaulted — this platform's users are
+    #: overwhelmingly freshers, so a `fresher` default would always agree and
+    #: therefore never inform anything.
+    seniority_signal: str | None = None
     concept_ids: list[str] = Field(default_factory=list)
     #: False when nothing in the ontology corresponds to it — "go-getter
     #: attitude". §3.2.3: mark it and say so rather than faking a score.
@@ -824,6 +841,12 @@ def locate(
     """
     found: list[tuple[int, Requirement]] = []
 
+    # One reading for the whole document. A posting says "we are hiring
+    # freshers" once, at the top, and every requirement under it inherits that;
+    # scanning per requirement would find it on one row and leave the rest
+    # silent, which reads as disagreement rather than as one statement.
+    seniority = seniority_of(text)
+
     for index, label in enumerate(labels, start=1):
         pattern = requirement_pattern(label)
         match = pattern.search(text)
@@ -832,6 +855,11 @@ def locate(
             SourceSpan(start=match.start(), end=match.end(), text=match.group(0)) if match else None
         )
         concept_id = resolved.get(label)
+        # Classified against the LINE as well as the label: a bare
+        # "communication" is one word, and "excellent written and verbal
+        # communication" is where the signal usually is.
+        line_start, line_end = _line_bounds(text, match.start()) if match else (0, 0)
+        measured = measured_by(label, context=text[line_start:line_end])
         found.append(
             (
                 match.start() if match else len(text) + index,
@@ -841,6 +869,9 @@ def locate(
                     span=span,
                     necessity=necessity_at(text, match.start()) if match else "should",
                     mentions=mentions,
+                    kind=kind_of(label, measured=measured),
+                    measured_by=measured,
+                    seniority_signal=seniority,
                     concept_ids=[concept_id] if concept_id else [],
                     measurable=bool(concept_id),
                     concept_source=sources.get(label),

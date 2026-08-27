@@ -27,20 +27,33 @@ everything on the best ratio. `log(1 + q)` makes the second question about a
 topic worth less than the first, which is both true and what makes a plan look
 like a person wrote it.
 
-── What is deliberately uniform, and why that is not laziness ──────────────────
+── Questions are priced by what would actually test them ───────────────────────
 
-§6.5 costs a coding question at 12 minutes and a design question at 20 against
-a verbal question's 3.5, and §5's `Requirement.measured_by` is what says which
-a requirement needs. `measured_by` does not exist — it is one of the three §5
-fields still absent — and nothing else in the pipeline carries the signal:
-M04's concepts arrive as a name and a list of aliases, with no kind.
+§6.5: *"roughly one question per 3.5 minutes for verbal, one per 12 minutes for
+coding, one per 20 for design."* Until `measured_by` landed on 2026-08-27 this
+file priced everything as verbal, because nothing in the pipeline said which
+requirements needed an editor and which needed a whiteboard.
 
-So every question here is costed as verbal, and `round_type` says `verbal` for
-everything. The alternative was to guess a round type from the label text, which
-would put a confident "coding round" on a requirement nobody classified and make
-the plan's time estimate wrong in a way no reader could see. The allocation
-still differentiates, because severity does the differentiating; what a uniform
-cost loses is the *shape* of the session, not its priorities.
+That was not a rounding error. A 45-minute session against four coding
+requirements is three questions, not twelve, and the uniform price promised
+twelve. The plan was overselling the session by a factor of three and the only
+honest thing it could do was say so on screen.
+
+Now `measured_by` decides, and the cost changes what fits: `MINUTES_PER_QUESTION`
+maps each of §5's six measurement modes onto one of the three prices, and a
+requirement measured several ways is priced at the DEAREST of them — "DSA and
+system design" needs the design slot, and pricing it as coding would fit a
+question into a gap that cannot hold it.
+
+── The requirements nothing can measure ────────────────────────────────────────
+
+§3.2.1 trap 3: *"'Go-getter attitude' maps to nothing — mark it `unmeasurable`
+and say so rather than faking a score."* A requirement with an empty
+`measured_by` is excluded from the optimiser entirely and reported in
+`unmeasurable` beside the ones with no concept id. Two different reasons to be
+untestable — no ontology concept, or no round that could ask — and the same
+consequence, which is that spending interview minutes on it would produce
+nothing.
 """
 
 from __future__ import annotations
@@ -50,10 +63,35 @@ import math
 from pydantic import BaseModel, Field
 
 #: §6.5: "roughly one question per 3.5 minutes for verbal, one per 12 minutes
-#: for coding, one per 20 for design". Only the first is reachable today; the
-#: other two are here because they are the spec's numbers and the day
-#: `measured_by` lands they are what it selects between.
+#: for coding, one per 20 for design".
 MINUTES_PER_QUESTION = {"verbal": 3.5, "coding": 12.0, "design": 20.0}
+
+#: §5's six measurement modes onto the three prices above.
+#:
+#: `behavioural`, `communication` and `aptitude` are all verbal rounds — they
+#: are asked and answered out loud, and the difference between them is which
+#: module scores the answer, not how long the question takes.
+_ROUND_FOR = {
+    "technical": "verbal",
+    "behavioural": "verbal",
+    "communication": "verbal",
+    "aptitude": "verbal",
+    "coding": "coding",
+    "design": "design",
+}
+
+
+def round_for(measured: list[str]) -> str:
+    """The round a requirement needs, priced at the DEAREST of its modes.
+
+    "DSA and system design" is measured by both coding and design. Pricing it as
+    coding fits a twelve-minute question into a slot that needs twenty, and the
+    session then runs over by the difference — every time, silently, because
+    nothing downstream re-checks the arithmetic.
+    """
+    rounds = {_ROUND_FOR.get(mode, "verbal") for mode in measured} or {"verbal"}
+    return max(rounds, key=lambda name: MINUTES_PER_QUESTION[name])
+
 
 #: §6.5's constraint, and it is about the student rather than about the maths:
 #: "nobody wants 7 DBMS questions".
@@ -79,7 +117,9 @@ class CoverageAllocation(BaseModel):
     #: the requirement list.
     requirement_text: str
     question_budget: int
-    round_type: str = "verbal"
+    #: `verbal`, `coding` or `design`, from `measured_by`. What a question about
+    #: this requirement would actually be, and therefore what it costs.
+    round_type: str
     #: `weight × (1 − mastery)`, discounted when we are guessing. What the
     #: allocation is sorted by, exposed so the sort can be checked.
     priority: float
@@ -193,8 +233,6 @@ def build_plan(
     outputs are a partial plan and a statement that the session is too short.
     That is what `uncovered` and `suggestion` carry.
     """
-    minutes_each = MINUTES_PER_QUESTION["verbal"]
-
     # `met_by_alternative` is excluded before anything else. The posting offered
     # a choice and the student answered it; spending a question on the
     # alternative they did not take is asking about something the JD does not
@@ -204,12 +242,28 @@ def build_plan(
         for requirement in requirements
         if states.get(requirement["text"]) not in {"unmeasurable", "met_by_alternative"}
         and requirement.get("measurable")
+        # §3.2.1 trap 3: an empty `measured_by` means no round in this platform
+        # could produce evidence about it. Allocating a question to "go-getter
+        # attitude" spends interview minutes on something nothing can score.
+        and requirement.get("measured_by")
     ]
     unmeasurable = [
         requirement["text"]
         for requirement in requirements
-        if not requirement.get("measurable") or states.get(requirement["text"]) == "unmeasurable"
+        if states.get(requirement["text"]) != "met_by_alternative"
+        and (
+            not requirement.get("measurable")
+            or states.get(requirement["text"]) == "unmeasurable"
+            or not requirement.get("measured_by")
+        )
     ]
+
+    # What one question about each requirement costs. This is the whole point of
+    # `measured_by`: a coding question is twelve minutes and a verbal one is
+    # three and a half, and pricing them the same oversold a 45-minute session
+    # by a factor of three.
+    rounds = {r["id"]: round_for(r.get("measured_by") or []) for r in considered}
+    cost = {rid: MINUTES_PER_QUESTION[name] for rid, name in rounds.items()}
 
     priorities: dict[str, float] = {}
     for requirement in considered:
@@ -236,9 +290,10 @@ def build_plan(
         reverse=True,
     )
     for requirement in musts:
-        if remaining >= minutes_each:
+        price = cost[requirement["id"]]
+        if remaining >= price:
             questions[requirement["id"]] = 1
-            remaining -= minutes_each
+            remaining -= price
         else:
             uncovered.append(requirement["id"])
 
@@ -246,36 +301,44 @@ def build_plan(
     #  Then spend what is left where the next question is worth most
     # ------------------------------------------------------------------
     by_id = {requirement["id"]: requirement for requirement in considered}
-    while remaining >= minutes_each:
+    cheapest = min(cost.values(), default=0.0)
+    while cheapest and remaining >= cheapest:
         best_id = None
         best_gain = 0.0
         for requirement_id, count in questions.items():
             if count >= MAX_QUESTIONS_PER_REQUIREMENT:
                 continue
-            gain = _marginal_gain(priorities[requirement_id], count, minutes_each)
+            # Affordability is now per requirement: a design slot can be
+            # unaffordable while a verbal one is still in reach, so the loop
+            # keeps going rather than stopping at the first thing that no
+            # longer fits.
+            if cost[requirement_id] > remaining:
+                continue
+            gain = _marginal_gain(priorities[requirement_id], count, cost[requirement_id])
             if gain > best_gain:
                 best_gain, best_id = gain, requirement_id
 
-        # Every requirement is capped out, or every remaining priority is zero.
-        # Handing back unspent minutes is the honest end of a greedy pass.
+        # Everything affordable is capped out, or every remaining priority is
+        # zero. Handing back unspent minutes is the honest end of a greedy pass.
         if best_id is None:
             break
 
         questions[best_id] += 1
-        remaining -= minutes_each
+        remaining -= cost[best_id]
 
     allocations = [
         CoverageAllocation(
             requirement_id=requirement_id,
             requirement_text=by_id[requirement_id]["text"],
             question_budget=count,
+            round_type=rounds[requirement_id],
             priority=round(priorities[requirement_id], 4),
             rationale=_rationale(
                 by_id[requirement_id].get("necessity", "should"),
                 states.get(by_id[requirement_id]["text"], "not_measured"),
                 count,
             ),
-            minutes=round(count * minutes_each, 2),
+            minutes=round(count * cost[requirement_id], 2),
         )
         for requirement_id, count in questions.items()
         if count > 0
@@ -296,7 +359,7 @@ def build_plan(
 
     suggestion = None
     if uncovered:
-        needed = math.ceil(len(uncovered) * minutes_each)
+        needed = math.ceil(sum(cost[rid] for rid in uncovered))
         suggestion = (
             f"{len(uncovered)} must-have requirement"
             f"{'' if len(uncovered) == 1 else 's'} did not fit in {total_minutes} minutes. "

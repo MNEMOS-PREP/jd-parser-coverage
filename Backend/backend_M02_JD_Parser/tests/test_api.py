@@ -1122,10 +1122,13 @@ def test_the_budget_does_not_collapse_onto_the_worst_gap(client, m04_mastery):
     )
     jd_id = _parse_for_plan(client)
 
-    # 30 minutes buys eight questions across four requirements, so the budget
-    # is genuinely scarce. At 90 every requirement saturates at its cap and
-    # there is nothing left to allocate — a real property, asserted separately.
-    plan = _plan(client, jd_id, uuid.uuid4(), minutes=30)
+    # 90 minutes. Since `measured_by` landed, DP, Recursion and Hashing are
+    # CODING requirements at twelve minutes a question and only SQL is a
+    # three-and-a-half-minute verbal one — so 30 minutes now buys the must-have
+    # floor and nothing else, and there is no room left to differentiate in.
+    # That is the correct economics, not a regression: a half-hour session
+    # cannot hold eight DSA questions and never could.
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=90)
     budget = {a["requirement_text"]: a["question_budget"] for a in plan["allocations"]}
 
     assert budget["SQL"] <= 4, "the per-requirement cap did not hold"
@@ -1153,7 +1156,7 @@ def test_two_students_on_one_posting_get_different_plans(client, m04_mastery):
         }
     )
     jd_id = _parse_for_plan(client)
-    plan_a = _plan(client, jd_id, uuid.uuid4(), minutes=30)
+    plan_a = _plan(client, jd_id, uuid.uuid4(), minutes=90)
 
     fake.up(
         mastery={
@@ -1164,7 +1167,7 @@ def test_two_students_on_one_posting_get_different_plans(client, m04_mastery):
             ]
         }
     )
-    plan_b = _plan(client, jd_id, uuid.uuid4(), minutes=30)
+    plan_b = _plan(client, jd_id, uuid.uuid4(), minutes=90)
 
     a = {x["requirement_text"]: x["question_budget"] for x in plan_a["allocations"]}
     b = {x["requirement_text"]: x["question_budget"] for x in plan_b["allocations"]}
@@ -1254,9 +1257,10 @@ def test_a_plan_is_a_gap_analysis_and_is_gated_like_one(client, m04_mastery, ses
 def test_a_session_longer_than_the_posting_needs_says_so(client, m04_mastery):
     """The other end of EC-2.11, and the honest half of trap 4.
 
-    Four requirements at a four-question cap is sixteen questions, about 56
-    minutes. Past that the plan genuinely IS the same for every student —
-    everything is capped and there is nothing left to differentiate WITH.
+    Three coding requirements at twelve minutes and one verbal at three and a
+    half, four questions each, is about 158 minutes. Past that the plan
+    genuinely IS the same for every student — everything is capped and there is
+    nothing left to differentiate WITH.
 
     §3.2.1 says a plan that is the same for everybody is a template. It is not
     a bug here, but it looks exactly like one from the outside, so the plan
@@ -1266,7 +1270,7 @@ def test_a_session_longer_than_the_posting_needs_says_so(client, m04_mastery):
     m04_mastery({"measured": []})
     jd_id = _parse_for_plan(client)
 
-    plan = _plan(client, jd_id, uuid.uuid4(), minutes=120)
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=240)
 
     assert plan["saturated"] is True
     assert plan["suggestion"]
@@ -1280,7 +1284,7 @@ def test_a_normal_session_is_not_saturated(client, m04_mastery):
     m04_mastery({"measured": []})
     jd_id = _parse_for_plan(client)
 
-    assert _plan(client, jd_id, uuid.uuid4(), minutes=30)["saturated"] is False
+    assert _plan(client, jd_id, uuid.uuid4(), minutes=90)["saturated"] is False
 
 
 def test_saturation_blames_the_ontology_when_the_ontology_is_the_cause(client, m04_mastery):
