@@ -1,7 +1,9 @@
 import uuid
 
 import pytest
+from backend_M02_JD_Parser.app import app
 from backend_M02_JD_Parser.router import FALLBACK_CONCEPTS
+from fastapi.testclient import TestClient
 
 
 def test_health(client):
@@ -906,11 +908,7 @@ def test_a_choice_is_met_by_one_of_its_answers(client, m04_mastery):
         json={
             "company_name": "Acme",
             "role_title": "Engineer",
-            "raw_text": (
-                "Engineer\n\nRequirements:\n"
-                "- Dynamic Programming or Recursion\n"
-                "- SQL\n"
-            ),
+            "raw_text": ("Engineer\n\nRequirements:\n- Dynamic Programming or Recursion\n- SQL\n"),
         },
     )
     assert res.status_code == 201, res.text
@@ -1006,7 +1004,7 @@ def test_rescuing_a_requirement_does_not_invent_one(client, m04):
 
 
 def test_familiarity_describes_depth_not_optionality(client, m04):
-    """"Familiarity with Git" under Requirements is required, shallowly.
+    """ "Familiarity with Git" under Requirements is required, shallowly.
 
     `_COULD` matched "familiarity with", so a stated requirement landed in the
     nice-to-have band and earned a third of the weight — a third of the
@@ -1026,3 +1024,241 @@ def test_familiarity_describes_depth_not_optionality(client, m04):
     assert by_text["Git"]["necessity"] == "must"
     assert by_text["Docker"]["necessity"] == "could"
     assert by_text["Git"]["weight"] > by_text["Docker"]["weight"]
+
+
+# ---------------------------------------------------------------------------
+#  The coverage plan (FR-2.8, §6.5)
+# ---------------------------------------------------------------------------
+
+
+PLAN_DISJUNCTION_JD = """Backend
+
+Requirements:
+- Dynamic Programming or Recursion
+- SQL
+"""
+
+PLAN_JD = """Backend Engineer
+
+Requirements:
+- Dynamic Programming
+- SQL
+- Recursion
+
+Nice to have:
+- Hashing
+"""
+
+
+def _plan(client, jd_id, candidate_id, minutes=45):
+    res = client.post(f"/v1/jds/{jd_id}/plan/{candidate_id}", json={"minutes": minutes})
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def _parse_for_plan(client):
+    res = client.post(
+        "/v1/jds/parse",
+        json={"company_name": "Acme", "role_title": "Backend", "raw_text": PLAN_JD},
+    )
+    assert res.status_code in (200, 201), res.text
+    return res.json()["id"]
+
+
+def test_every_measurable_must_have_gets_at_least_one_question(client, m04_mastery):
+    """FR-2.9, and it is a hard constraint rather than a tendency.
+
+    A plan that skips a stated must-have because the optimiser found better
+    value elsewhere has failed at the one thing the student asked it for.
+    """
+    m04_mastery({"measured": [{"concept_id": "concept:dynamic_programming", "mastery_p": 0.95}]})
+    jd_id = _parse_for_plan(client)
+
+    plan = _plan(client, jd_id, uuid.uuid4())
+    budget = {a["requirement_text"]: a["question_budget"] for a in plan["allocations"]}
+
+    # Strong AND a must-have: still gets a question, because the posting leans
+    # on it and mastery is a posterior, not a certificate.
+    assert budget.get("Dynamic Programming", 0) >= 1
+    assert budget.get("SQL", 0) >= 1
+    assert budget.get("Recursion", 0) >= 1
+    assert plan["uncovered"] == []
+
+
+def test_the_budget_does_not_collapse_onto_the_worst_gap(client, m04_mastery):
+    """§6.5: *"without it the optimiser dumps the entire budget on the single
+    worst gap, producing a mock that is 9 DBMS questions."*
+
+    The log utility is what stops that, and the cap is the backstop. A linear
+    objective under one constraint always puts everything on the best ratio.
+    """
+    m04_mastery(
+        {
+            "measured": [
+                {"concept_id": "concept:sql_basics", "mastery_p": 0.05},
+                {"concept_id": "concept:dynamic_programming", "mastery_p": 0.80},
+                {"concept_id": "concept:recursion", "mastery_p": 0.75},
+            ]
+        }
+    )
+    jd_id = _parse_for_plan(client)
+
+    # 30 minutes buys eight questions across four requirements, so the budget
+    # is genuinely scarce. At 90 every requirement saturates at its cap and
+    # there is nothing left to allocate — a real property, asserted separately.
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=30)
+    budget = {a["requirement_text"]: a["question_budget"] for a in plan["allocations"]}
+
+    assert budget["SQL"] <= 4, "the per-requirement cap did not hold"
+    # The worst gap leads, but it does not take everything.
+    assert budget["SQL"] > budget["Dynamic Programming"]
+    assert len([a for a in plan["allocations"] if a["question_budget"] > 0]) >= 3
+
+
+def test_two_students_on_one_posting_get_different_plans(client, m04_mastery):
+    """§10's differentiation test, and §3.2.1's trap 4.
+
+    *"'Every SDE mock = 4 DSA + 2 OOP + 2 HR' is not planning, it is a
+    constant. The entire value is that the plan changes based on THIS student's
+    gaps against THIS JD."* If two students with opposite Skill Graphs get the
+    same allocation, the planner is a template and the module has failed at the
+    thing it is named after.
+    """
+    fake = m04_mastery(
+        {
+            "measured": [
+                {"concept_id": "concept:sql_basics", "mastery_p": 0.10},
+                {"concept_id": "concept:dynamic_programming", "mastery_p": 0.90},
+                {"concept_id": "concept:recursion", "mastery_p": 0.85},
+            ]
+        }
+    )
+    jd_id = _parse_for_plan(client)
+    plan_a = _plan(client, jd_id, uuid.uuid4(), minutes=30)
+
+    fake.up(
+        mastery={
+            "measured": [
+                {"concept_id": "concept:sql_basics", "mastery_p": 0.90},
+                {"concept_id": "concept:dynamic_programming", "mastery_p": 0.10},
+                {"concept_id": "concept:recursion", "mastery_p": 0.15},
+            ]
+        }
+    )
+    plan_b = _plan(client, jd_id, uuid.uuid4(), minutes=30)
+
+    a = {x["requirement_text"]: x["question_budget"] for x in plan_a["allocations"]}
+    b = {x["requirement_text"]: x["question_budget"] for x in plan_b["allocations"]}
+
+    assert a != b, "two opposite students got the same plan - this is a template"
+    # Directional, not merely different: the student weak on SQL is asked about
+    # SQL more than the one who is strong on it, and the reverse for DP.
+    assert a["SQL"] > b["SQL"]
+    assert b["Dynamic Programming"] > a["Dynamic Programming"]
+
+
+def test_a_session_too_short_says_so_instead_of_dropping_a_must(client, m04_mastery):
+    """EC-2.11: `uncovered` populated AND an explicit suggestion.
+
+    Silently fitting what fits is the failure mode that looks like success -
+    the student reads a tidy plan and never learns the posting asked for more.
+    """
+    m04_mastery({"measured": []})
+    jd_id = _parse_for_plan(client)
+
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=4)
+
+    assert plan["uncovered"], "a 4-minute session covered every must-have"
+    assert plan["suggestion"]
+    assert "more minute" in plan["suggestion"]
+
+
+def test_an_alternative_already_met_earns_no_questions(client, m04_mastery):
+    """FR-2.3 reaching the plan.
+
+    The posting said "Dynamic Programming or Recursion" and the student
+    answered with Dynamic Programming. Spending interview time on Recursion is
+    asking about something this job does not require.
+    """
+    m04_mastery(
+        {
+            "measured": [
+                {"concept_id": "concept:dynamic_programming", "mastery_p": 0.95},
+                {"concept_id": "concept:recursion", "mastery_p": 0.05},
+            ]
+        }
+    )
+    res = client.post(
+        "/v1/jds/parse",
+        json={
+            "company_name": "Acme",
+            "role_title": "Backend",
+            "raw_text": PLAN_DISJUNCTION_JD,
+        },
+    )
+    jd_id = res.json()["id"]
+
+    plan = _plan(client, jd_id, uuid.uuid4())
+    budget = {a["requirement_text"]: a["question_budget"] for a in plan["allocations"]}
+
+    assert "Recursion" not in budget
+    assert budget.get("Dynamic Programming", 0) >= 1
+
+
+def test_the_plan_never_overspends_the_session(client, m04_mastery):
+    """The constraint that makes it a plan rather than a wish list."""
+    m04_mastery({"measured": []})
+    jd_id = _parse_for_plan(client)
+
+    for minutes in (5, 15, 30, 45, 60, 120):
+        plan = _plan(client, jd_id, uuid.uuid4(), minutes=minutes)
+        assert plan["allocated_minutes"] <= minutes, f"overspent at {minutes} minutes"
+
+
+@pytest.mark.gate
+def test_a_plan_is_a_gap_analysis_and_is_gated_like_one(client, m04_mastery, session):
+    """`candidate_id` is in the PATH so `enforce_access` sees it.
+
+    In the body it would have been unauthenticated by omission - the router
+    dependency keys on the path parameter, and a plan is a gap analysis with a
+    schedule attached.
+    """
+    m04_mastery({"measured": []})
+    jd_id = _parse_for_plan(client)
+
+    stranger = TestClient(app, headers={"X-Role": "student", "X-Candidate-Id": str(uuid.uuid4())})
+    res = stranger.post(f"/v1/jds/{jd_id}/plan/{uuid.uuid4()}", json={"minutes": 45})
+
+    assert res.status_code == 403
+
+
+def test_a_session_longer_than_the_posting_needs_says_so(client, m04_mastery):
+    """The other end of EC-2.11, and the honest half of trap 4.
+
+    Four requirements at a four-question cap is sixteen questions, about 56
+    minutes. Past that the plan genuinely IS the same for every student —
+    everything is capped and there is nothing left to differentiate WITH.
+
+    §3.2.1 says a plan that is the same for everybody is a template. It is not
+    a bug here, but it looks exactly like one from the outside, so the plan
+    reports it rather than presenting a saturated allocation as if it were
+    tailored.
+    """
+    m04_mastery({"measured": []})
+    jd_id = _parse_for_plan(client)
+
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=120)
+
+    assert plan["saturated"] is True
+    assert plan["suggestion"]
+    assert "four-question cap" in plan["suggestion"]
+    # And not confused with the too-short case, which is the other suggestion.
+    assert plan["uncovered"] == []
+
+
+def test_a_normal_session_is_not_saturated(client, m04_mastery):
+    """The flag has to be off in the case it is not about, or it is noise."""
+    m04_mastery({"measured": []})
+    jd_id = _parse_for_plan(client)
+
+    assert _plan(client, jd_id, uuid.uuid4(), minutes=30)["saturated"] is False

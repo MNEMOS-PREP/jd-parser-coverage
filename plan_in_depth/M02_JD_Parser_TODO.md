@@ -70,8 +70,8 @@ one table whose requirements are a flat `list[str]`:
 | FR-2.3 | 🟡 | **Landed 2026-08-27.** "Docker or Kubernetes" is one `RequirementGroup` with `satisfaction: any_of` over two requirements, not three requirements. The alternatives share one requirement's weight. A slash splits only when the ontology recognises ≥2 of its parts — `Java/Python/C++` does, `CI/CD` does not — so with M04 down nothing splits and slashed requirements stay whole rather than being invented into three. `n_of` is not emitted because no posting seen writes "at least two of" |
 | FR-2.4 | 🟡 | **Landed 2026-08-25.** CGPA, backlogs, batch and bond extracted with spans, stored beside the requirements rather than among them. `allowed_branches`, `location` and the package figures are still absent — omitted, not guessed |
 | FR-2.6 | ⬜ | No role archetype inference |
-| FR-2.8 | ⬜ | No `CoveragePlan`, no question budget. This is the module's name |
-| FR-2.9 | ⬜ | Nothing guarantees a probe per `must` |
+| FR-2.8 | 🟡 | **Landed 2026-08-27.** `POST /v1/jds/{id}/plan/{candidate}` returns a `CoveragePlan`: priority is `weight × (1 − mastery)`, every measurable must-have is guaranteed one question (FR-2.9), and the rest goes by marginal value per minute under a `log(1 + q)` utility — §6.5's own solver. Caps at 4 per requirement. §10's differentiation test passes: two students with opposite Skill Graphs get directionally different plans. Missing: `rounds` and per-modality timing, which need `measured_by`; every question is costed as verbal, so the priorities are real and the session's SHAPE is not |
+| FR-2.9 | ✅ | **Landed 2026-08-27** with FR-2.8. The must-have floor is seeded before any second question is allocated, in severity order, so when the budget runs out it is the least severe must that goes `uncovered` rather than whichever the posting wrote last |
 | FR-2.10 | ⬜ | Requirements are not editable |
 | FR-2.11 | ⬜ | No live coverage, no post-session report |
 | FR-2.12 | ✅ | **Landed 2026-08-25.** Normalised (company, role, text) hash, looked up globally — the parse is shared, the gap is per-student. A hit answers 200 rather than 201 |

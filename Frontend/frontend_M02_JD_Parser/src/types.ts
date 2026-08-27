@@ -210,3 +210,54 @@ export interface JdParseIn {
   role_title: string;
   raw_text: string;
 }
+
+/* ------------------------------------------------------------------ */
+/*  The coverage plan (FR-2.8)                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One requirement's share of the interview.
+ *
+ * `rationale` is a sentence rather than a code because the spec marks it
+ * "shown in the UI": a student looking at four questions on one topic and none
+ * on another is owed the reason in words they can argue with.
+ */
+export interface CoverageAllocation {
+  requirement_id: string;
+  requirement_text: string;
+  question_budget: number;
+  /** Always "verbal" today — `measured_by` does not exist, so nothing can say
+   *  a requirement needs a coding or design round. */
+  round_type: string;
+  /** `weight × (1 − mastery)`, discounted when we are guessing. */
+  priority: number;
+  rationale: string;
+  minutes: number;
+}
+
+export interface CoveragePlan {
+  jd_id: string;
+  candidate_id: string;
+  total_minutes: number;
+  /** What the allocation actually consumes — lower than `total_minutes` when
+   *  the remaining time cannot buy another whole question. */
+  allocated_minutes: number;
+  allocations: CoverageAllocation[];
+  /** Must-haves that did not fit. Stated openly, never quietly dropped. */
+  uncovered: string[];
+  /** Requirements no question can probe — a different problem from not fitting. */
+  unmeasurable: string[];
+  /** EC-2.11 requires the suggestion, not just the omission. */
+  suggestion: string | null;
+  /**
+   * Every requirement is at its four-question cap with minutes left over.
+   *
+   * At that point the plan genuinely IS the same for every student, because
+   * there is nothing left to differentiate with. Not a bug — a 90-minute
+   * session against a five-requirement posting has more time than the posting
+   * has content — but a plan that looks tailored and is not is exactly what
+   * §3.2.1's trap 4 warns about, so it is said out loud.
+   */
+  saturated: boolean;
+  plan_version: string;
+}

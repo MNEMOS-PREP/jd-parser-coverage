@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from backend_M02_JD_Parser.models import JobDescription
+from backend_M02_JD_Parser.plan import CoveragePlan, build_plan
 
 from .extract import (
     drop_redundant,
@@ -521,3 +522,57 @@ def get_jd_coverage(jd_id: uuid.UUID, candidate_id: uuid.UUID, session: Session 
         "scanned_against": jd.scanned_against,
         "degraded": degraded,
     }
+
+
+class PlanIn(BaseModel):
+    """§9: `POST /v1/jds/{id}/plan {minutes, modalities, focus_overrides}`.
+
+    `modalities` and `focus_overrides` are not accepted, because neither has
+    anything to act on. Modality selection needs `Requirement.measured_by` to
+    know a coding requirement from a verbal one, and focus overrides need
+    FR-2.10's editable requirements. Accepting them and ignoring them would be
+    worse than refusing them: a caller would believe the plan honoured a focus
+    it never saw.
+    """
+
+    #: How long the student has. §2.3: "students budget in evenings, not in
+    #: features", so this is the one input that always exists.
+    minutes: int = 45
+
+
+@router.post("/jds/{jd_id}/plan/{candidate_id}", response_model=CoveragePlan)
+def post_jd_plan(
+    jd_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    payload: PlanIn,
+    session: Session = Depends(get_db),
+):
+    """The allocation of interview question budget across requirements (FR-2.8).
+
+    `candidate_id` is in the PATH rather than the body because `enforce_access`
+    keys on that path parameter, and a plan is a gap analysis with a schedule
+    attached — the same personal data the coverage route is gated for. In the
+    body it would have been unauthenticated by omission.
+
+    The gap is read by calling the coverage endpoint's own function rather than
+    recomputing it. Two implementations of "is this student weak on this" would
+    diverge, and the first sign would be a plan that allocates four questions to
+    something the coverage screen shows as strong.
+    """
+    if payload.minutes < 1:
+        raise HTTPException(status_code=422, detail="minutes must be at least 1")
+
+    jd = session.get(JobDescription, jd_id)
+    if not jd:
+        raise HTTPException(status_code=404, detail="Job Description not found")
+
+    coverage = get_jd_coverage(jd_id, candidate_id, session)
+
+    return build_plan(
+        jd_id=str(jd_id),
+        candidate_id=str(candidate_id),
+        total_minutes=payload.minutes,
+        requirements=jd.requirements or [],
+        states=coverage["states"],
+        mastery=coverage["mastery"],
+    )

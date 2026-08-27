@@ -27,6 +27,7 @@ import { Link, useParams } from "react-router-dom";
 import { useCoverage, useJd } from "../api";
 import { useCandidateId } from "./candidate-hook";
 import { CoveragePanel } from "./CoveragePanel";
+import { PlanPanel } from "./PlanPanel";
 import { ScanSourceNote } from "./ConceptSourceChip";
 import {
   Empty,
@@ -173,6 +174,11 @@ export function JdPage() {
         </ErrorNote>
       )}
       {coverage.data && <CoveragePanel coverage={coverage.data} />}
+
+      {/* The plan goes AFTER the gap, because it is an answer to it. Reading
+          "you are weak here" and then "so spend four questions there" is the
+          order the student thinks in. */}
+      {coverage.data && <PlanPanel jdId={jdId} candidateId={candidateId} />}
 
       <Section label="The pasted text">
         <Panel tone="sunken" className="px-4 py-3">
