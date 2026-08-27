@@ -12,7 +12,14 @@
 import { DependencyTable } from "@ai/core";
 
 import { useDeps, useHealth, useModuleStatus } from "../api";
-import { Field, Panel, Pill, Rows, Section, SkeletonRows } from "../ui/primitives";
+import {
+  Field,
+  Panel,
+  Pill,
+  Rows,
+  Section,
+  SkeletonRows,
+} from "../ui/primitives";
 
 export function DepsPage() {
   const deps = useDeps();
@@ -28,8 +35,9 @@ export function DepsPage() {
       <header className="mb-8">
         <h1 className="text-title font-semibold text-ink">Dependencies</h1>
         <p className="mt-1 max-w-2xl text-sm text-ink-soft">
-          M02 starts and runs with none of these present. What changes is the scope of what it can
-          say &mdash; never the quality of what it does say, and never silently.
+          M02 starts and runs with none of these present. What changes is the
+          scope of what it can say &mdash; never the quality of what it does
+          say, and never silently.
         </p>
       </header>
 
@@ -45,7 +53,9 @@ export function DepsPage() {
                 : "unreachable"}
             </Field>
             <Field label="spec">{status.data?.spec ?? "—"}</Field>
-            <Field label="reserved port">{status.data?.reserved_port ?? "—"}</Field>
+            <Field label="reserved port">
+              {status.data?.reserved_port ?? "—"}
+            </Field>
           </Rows>
         </Panel>
       </Section>
@@ -62,26 +72,30 @@ export function DepsPage() {
               <span className="provenance">{m04.detail}</span>
             </div>
             <p className="mt-2 text-sm text-ink-soft">
-              Three things are narrowed while M04 is down, and they fail separately:
+              Three things are narrowed while M04 is down, and they fail
+              separately:
             </p>
             <ul className="mt-1.5 space-y-1 text-sm text-ink-soft">
               <li>
-                <strong className="font-medium text-ink">The scan</strong> looks for five concepts
-                instead of the ontology, so most requirements in a real JD are not found at all.
+                <strong className="font-medium text-ink">The scan</strong> looks
+                for five concepts instead of the ontology, so most requirements
+                in a real JD are not found at all.
               </li>
               <li>
-                <strong className="font-medium text-ink">Resolution</strong> falls back to a
-                five-entry table. Those ids are usable and are labelled{" "}
-                <em>guessed offline</em> everywhere they appear.
+                <strong className="font-medium text-ink">Resolution</strong>{" "}
+                falls back to a five-entry table. Those ids are usable and are
+                labelled <em>guessed offline</em> everywhere they appear.
               </li>
               <li>
-                <strong className="font-medium text-ink">The gap</strong> cannot be computed at all.
-                Coverage returns null, not zero.
+                <strong className="font-medium text-ink">The gap</strong> cannot
+                be computed at all. Coverage returns null, not zero.
               </li>
             </ul>
             <p className="mt-2 text-xs text-ink-faint">
               Point at a running instance without editing the manifest:{" "}
-              <code className="provenance">M04_BASE_URL=http://127.0.0.1:8104</code>
+              <code className="provenance">
+                M04_BASE_URL=http://127.0.0.1:8104
+              </code>
             </p>
           </Panel>
         )}

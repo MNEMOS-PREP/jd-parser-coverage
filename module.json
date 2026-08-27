@@ -13,7 +13,6 @@
     "repo": "https://github.com/MNEMOS-PREP/Platform_Core",
     "version": "v0.6.0"
   },
-
   "_comment_depends_on": [
     "Nothing here is required to START. Every upstream is optional at runtime,",
     "and its absence removes a FEATURE, never the endpoint and never silently.",
@@ -28,33 +27,56 @@
       "name": "Skill Graph & MNEMOS Memory",
       "repo": "https://github.com/MNEMOS-PREP/Memory",
       "reason": "the concept ontology to scan a JD against, label resolution, and candidate mastery for the coverage gap",
-      "on_missing": "Your gaps against this JD — needs M04 Skill Graph. We still read the requirements out of the JD; we just can't say yet which of them you're weak on.",
+      "on_missing": "Your gaps against this JD \u2014 needs M04 Skill Graph. We still read the requirements out of the JD; we just can't say yet which of them you're weak on.",
       "base_url": "http://127.0.0.1:8104",
+      "health_path": "/health",
+      "required": false
+    },
+    {
+      "module": "M01",
+      "name": "Resume Ingestion & Claim Extraction",
+      "repo": "https://github.com/MNEMOS-PREP/resume-ingestion",
+      "reason": "the student's resume, to check the eligibility bar against their actual CGPA (FR-2.15) and to say which requirements their resume evidences",
+      "on_missing": "Your resume against this job - needs M01 Resume Ingestion. We can still show what the posting asks for and where you stand against the Skill Graph; we just can't tell you whether you clear the CGPA cutoff or which requirements your resume actually mentions.",
+      "base_url": "http://127.0.0.1:8101",
       "health_path": "/health",
       "required": false
     }
   ],
-
   "_comment_planned": [
-    "Spec §7 and the header also name M01 (resume claims, to weight a",
-    "requirement by what the student has actually done) and M15 (§6.7 company",
+    "Spec \u00a77 and the header also name M01 (resume claims, to weight a",
+    "requirement by what the student has actually done) and M15 (\u00a76.7 company",
     "enrichment - real round structure overriding archetype defaults).",
     "Neither is consumed by this code yet, so neither is declared: a dependency",
     "listed here produces a degradation banner, and a banner for a feature that",
     "does not exist is the same lie in the other direction.",
     "Add the entry in the same commit that adds the call."
   ],
-
   "_comment_feeds": [
     "These consume M02. They are NOT dependencies - M02 never calls them - but",
     "the RequirementSet and CoveragePlan shapes are what they read.",
     "Additive changes are safe; renaming or removing a field breaks them."
   ],
   "feeds": [
-    { "module": "M05", "takes": "requirement -> concept mapping, to select questions that probe a requirement" },
-    { "module": "M06", "takes": "the coverage plan: question budget per requirement, round mix" },
-    { "module": "M15", "takes": "role archetype and coverage plan for drive-variant matching" },
-    { "module": "M16", "takes": "the gap list, as the study plan's input" },
-    { "module": "M19", "takes": "the coverage ledger, for the post-session coverage report" }
+    {
+      "module": "M05",
+      "takes": "requirement -> concept mapping, to select questions that probe a requirement"
+    },
+    {
+      "module": "M06",
+      "takes": "the coverage plan: question budget per requirement, round mix"
+    },
+    {
+      "module": "M15",
+      "takes": "role archetype and coverage plan for drive-variant matching"
+    },
+    {
+      "module": "M16",
+      "takes": "the gap list, as the study plan's input"
+    },
+    {
+      "module": "M19",
+      "takes": "the coverage ledger, for the post-session coverage report"
+    }
   ]
 }

@@ -261,3 +261,60 @@ export interface CoveragePlan {
   saturated: boolean;
   plan_version: string;
 }
+
+/* ------------------------------------------------------------------ */
+/*  The resume against the posting (FR-2.15)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Four states, not two.
+ *
+ * Collapsing `unknown` and `scale_mismatch` into `fails` turns "we could not
+ * read your grade" into "you are not eligible" — a different sentence with
+ * very different consequences for somebody deciding whether to prepare.
+ */
+export type VerdictState = "meets" | "fails" | "unknown" | "scale_mismatch";
+
+export interface Verdict {
+  criterion: string;
+  state: VerdictState;
+  /** The sentence already written, so no screen re-phrases a cutoff. */
+  detail: string;
+  /** What the posting demands, verbatim. */
+  required: string | null;
+  /** What the resume says, verbatim. */
+  yours: string | null;
+}
+
+/**
+ * `blocking` is reserved for eligibility.
+ *
+ * A skill gap is something to prepare for; a CGPA cutoff is something to be
+ * turned away by. Ranking them together would tell a student to study for a
+ * drive they cannot sit.
+ */
+export type RiskSeverity = "blocking" | "high" | "medium" | "low";
+
+export interface Risk {
+  severity: RiskSeverity;
+  title: string;
+  detail: string;
+  requirements: string[];
+}
+
+/** `ok`, `no_resume`, or `m01_unreachable` — never conflated. */
+export type ResumeStatus = "ok" | "no_resume" | "m01_unreachable";
+
+export interface MatchReport {
+  jd_id: string;
+  candidate_id: string;
+  resume_id: string | null;
+  resume_status: ResumeStatus;
+  verdicts: Verdict[];
+  evidenced: string[];
+  unevidenced: string[];
+  /** `null` when the posting states no must-haves — not 0, which reads as
+   *  total failure rather than as a question nobody asked. */
+  must_have_evidence: number | null;
+  risks: Risk[];
+}

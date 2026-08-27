@@ -43,7 +43,9 @@ function ThemeToggle() {
       type="button"
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
       className="rounded-md px-2 py-1 text-ink-soft transition-colors hover:bg-surface-sunken hover:text-ink"
-      aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      aria-label={
+        theme === "dark" ? "Switch to light theme" : "Switch to dark theme"
+      }
     >
       <span aria-hidden className="text-sm">
         {theme === "dark" ? "☀" : "☾"}
@@ -93,7 +95,10 @@ function CandidateControl() {
         aria-label="Candidate id"
         className="w-64 rounded border border-line bg-surface px-2 py-0.5 font-mono text-xs text-ink outline-none focus:border-brand-line"
       />
-      <button type="submit" className="text-xs font-medium text-brand hover:text-brand-hover">
+      <button
+        type="submit"
+        className="text-xs font-medium text-brand hover:text-brand-hover"
+      >
         set
       </button>
     </form>
@@ -136,7 +141,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="text-sm font-semibold text-ink">JD Parser</span>
           </Link>
 
-          <nav aria-label="Main" className="flex flex-wrap items-center gap-0.5">
+          <nav
+            aria-label="Main"
+            className="flex flex-wrap items-center gap-0.5"
+          >
             {NAV.map((item) => (
               <NavLink
                 key={item.to}
@@ -165,7 +173,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 offline lexicon
               </Pill>
             )}
-            {health.data && <span className="provenance hidden lg:inline">M02 · :8102</span>}
+            {health.data && (
+              <span className="provenance hidden lg:inline">M02 · :8102</span>
+            )}
             <CandidateControl />
             <ThemeToggle />
           </div>
@@ -181,8 +191,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <footer className="border-t border-line px-5 py-5 md:px-8">
         <p className="provenance mx-auto max-w-5xl">
-          M02 · JD Parser &amp; Coverage Planner — every concept id here says whether the ontology
-          confirmed it, and a topic nobody has tested is never shown as a score of zero.
+          M02 · JD Parser &amp; Coverage Planner — every concept id here says
+          whether the ontology confirmed it, and a topic nobody has tested is
+          never shown as a score of zero.
         </p>
       </footer>
     </div>

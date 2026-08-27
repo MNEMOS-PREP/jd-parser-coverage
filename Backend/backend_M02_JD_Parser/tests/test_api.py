@@ -184,13 +184,22 @@ def test_unknown_jd_is_404(client):
 
 
 def test_deps_names_the_missing_module(client):
-    """The degradation is reportable, not merely absent."""
-    deps = client.get("/v1/deps").json()
-    assert [d["module_id"] for d in deps] == ["M04"]
-    assert deps[0]["available"] is False
-    assert deps[0]["base_url"] == "http://127.0.0.1:8104"
-    assert deps[0]["required"] is False
-    assert "M04" in deps[0]["on_missing"]
+    """The degradation is reportable, not merely absent.
+
+    Both upstreams are listed, and neither is required. M01 joined on
+    2026-08-27 for FR-2.15: the eligibility comparison needs the student's own
+    CGPA, which lives in M01 and nowhere else.
+    """
+    deps = {d["module_id"]: d for d in client.get("/v1/deps").json()}
+    assert set(deps) == {"M04", "M01"}
+
+    assert deps["M04"]["available"] is False
+    assert deps["M04"]["base_url"] == "http://127.0.0.1:8104"
+    assert deps["M04"]["required"] is False
+    assert "M04" in deps["M04"]["on_missing"]
+
+    assert deps["M01"]["required"] is False, "a missing resume must never stop a JD being parsed"
+    assert "M01" in deps["M01"]["on_missing"]
 
 
 def test_deps_reports_a_live_upstream(client, m04_mastery):

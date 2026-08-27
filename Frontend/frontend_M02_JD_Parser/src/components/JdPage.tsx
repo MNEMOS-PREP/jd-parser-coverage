@@ -86,6 +86,24 @@ export function JdPage() {
 
       <EligibilityBanner eligibility={data.eligibility} />
 
+      {/* The offer, not the analysis. FR-2.15's sentence — "you have 7.2,
+          cutoff is 7.5" — needs the student's own resume, and reading it is
+          something they should be asked about rather than something that
+          happens because they pasted a job posting. */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-brand-line bg-brand-soft px-4 py-3">
+        <p className="text-sm text-ink">
+          <span className="font-medium">Hold this up against your resume?</span>{" "}
+          We can tell you whether you clear the eligibility bar and which of
+          these requirements your resume actually mentions.
+        </p>
+        <Link
+          to={`/jds/${jdId}/compare`}
+          className="shrink-0 text-sm font-medium text-brand hover:text-brand-hover"
+        >
+          Compare &rarr;
+        </Link>
+      </div>
+
       <Section
         label="What this job asks for"
         meta={`${skillCount} matched · ${data.unresolved_skills.length} unmapped`}

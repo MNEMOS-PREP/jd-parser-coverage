@@ -26,6 +26,7 @@ import type {
   Health,
   JdParseIn,
   JobDescription,
+  MatchReport,
   ModuleStatus,
 } from "./types";
 
@@ -39,6 +40,8 @@ export const m02Keys = {
   // Keyed by minutes too: changing the session length is a different plan, not
   // a stale one, and caching per length means dragging the control back and
   // forth does not re-ask the server for an answer it already gave.
+  match: (jdId: string, candidateId: string) =>
+    ["m02", "match", jdId, candidateId] as const,
   plan: (jdId: string, candidateId: string, minutes: number) =>
     ["m02", "plan", jdId, candidateId, minutes] as const,
 };
@@ -138,5 +141,29 @@ export function usePlan(
       api.post<CoveragePlan>(`/v1/jds/${jdId}/plan/${candidateId}`, {
         minutes,
       }),
+  });
+}
+
+/**
+ * This student's resume against this posting (FR-2.15).
+ *
+ * Distinct from `useCoverage`, and the distinction is the point: coverage asks
+ * the Skill Graph what the student CAN DO across every session they have run,
+ * this asks the resume what a recruiter will READ about them next week. The
+ * two disagree constantly, and a student needs both — one says what to
+ * practise, the other what to rewrite.
+ *
+ * Never throws on a missing resume. M01 is optional, and the report carries
+ * `resume_status` rather than the hook carrying an error.
+ */
+export function useMatch(
+  jdId: string | undefined,
+  candidateId: string | undefined,
+) {
+  return useQuery({
+    queryKey: m02Keys.match(jdId ?? "", candidateId ?? ""),
+    enabled: Boolean(jdId && candidateId),
+    retry: false,
+    queryFn: () => api.get<MatchReport>(`/v1/jds/${jdId}/match/${candidateId}`),
   });
 }

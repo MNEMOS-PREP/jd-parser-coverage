@@ -33,7 +33,9 @@ export function Section({
         <header className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <div className="min-w-0">
             {label && <p className="rule-label">{label}</p>}
-            {title && <h2 className="text-section font-semibold text-ink">{title}</h2>}
+            {title && (
+              <h2 className="text-section font-semibold text-ink">{title}</h2>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-3">
             {meta && <span className="provenance">{meta}</span>}
@@ -63,7 +65,13 @@ export function Rows({ children }: { children: ReactNode }) {
   return <div className="divide-y divide-line">{children}</div>;
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5">
       <span className="text-xs text-ink-soft">{label}</span>
@@ -88,22 +96,33 @@ export function Btn({
     "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
   const variants = {
     primary: "bg-brand text-white hover:bg-brand-hover",
-    secondary: "border border-line bg-surface text-ink hover:border-line-strong",
+    secondary:
+      "border border-line bg-surface text-ink hover:border-line-strong",
     ghost: "text-ink-soft hover:bg-surface-sunken hover:text-ink",
   };
   const sizes = { sm: "px-2.5 py-1 text-xs", md: "px-3.5 py-1.5 text-sm" };
-  return <button {...props} className={`${base} ${variants[variant]} ${sizes[size]}`} />;
+  return (
+    <button
+      {...props}
+      className={`${base} ${variants[variant]} ${sizes[size]}`}
+    />
+  );
 }
 
 export function TextArea({
   label,
   hint,
   ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; hint?: string }) {
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  label: string;
+  hint?: string;
+}) {
   return (
     <label className="block">
       <span className="rule-label">{label}</span>
-      {hint && <span className="mt-0.5 block text-xs text-ink-soft">{hint}</span>}
+      {hint && (
+        <span className="mt-0.5 block text-xs text-ink-soft">{hint}</span>
+      )}
       <textarea
         {...props}
         className="mt-1.5 w-full rounded-md border border-line bg-surface px-3 py-2 font-mono text-xs leading-relaxed text-ink outline-none placeholder:text-ink-faint focus:border-brand-line"
@@ -139,7 +158,10 @@ export function SkeletonRows({ rows = 3 }: { rows?: number }) {
   return (
     <div role="status" aria-label="Loading" className="space-y-2">
       {Array.from({ length: rows }, (_, i) => (
-        <Skeleton key={i} className={`h-4 ${i % 3 === 2 ? "w-2/3" : "w-full"}`} />
+        <Skeleton
+          key={i}
+          className={`h-4 ${i % 3 === 2 ? "w-2/3" : "w-full"}`}
+        />
       ))}
     </div>
   );
@@ -157,7 +179,11 @@ export function Empty({
   return (
     <div className="rounded-panel border border-dashed border-line-strong px-6 py-10 text-center">
       <p className="font-semibold text-ink">{title}</p>
-      {children && <div className="mx-auto mt-1.5 max-w-md text-sm text-ink-soft">{children}</div>}
+      {children && (
+        <div className="mx-auto mt-1.5 max-w-md text-sm text-ink-soft">
+          {children}
+        </div>
+      )}
       {action && <div className="mt-4 flex justify-center gap-2">{action}</div>}
     </div>
   );

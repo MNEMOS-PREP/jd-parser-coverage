@@ -23,21 +23,23 @@
 import type { ConceptSource, ScannedAgainst } from "../types";
 import { Pill } from "../ui/primitives";
 
-const COPY: Record<ConceptSource, { label: string; tone: "confirmed" | "reported"; hint: string }> =
-  {
-    m04: {
-      label: "ontology",
-      tone: "confirmed",
-      hint: "M04 resolved this label to a concept in the skill graph. Anything downstream can test it.",
-    },
-    offline_fallback: {
-      label: "guessed offline",
-      tone: "reported",
-      hint:
-        "M04 was unreachable, so this id comes from a five-entry table in M02. " +
-        "It has not been confirmed to exist in the ontology.",
-    },
-  };
+const COPY: Record<
+  ConceptSource,
+  { label: string; tone: "confirmed" | "reported"; hint: string }
+> = {
+  m04: {
+    label: "ontology",
+    tone: "confirmed",
+    hint: "M04 resolved this label to a concept in the skill graph. Anything downstream can test it.",
+  },
+  offline_fallback: {
+    label: "guessed offline",
+    tone: "reported",
+    hint:
+      "M04 was unreachable, so this id comes from a five-entry table in M02. " +
+      "It has not been confirmed to exist in the ontology.",
+  },
+};
 
 export function ConceptSourceChip({
   source,
@@ -49,7 +51,10 @@ export function ConceptSourceChip({
   if (!source) return null;
   const copy = COPY[source];
   return (
-    <Pill tone={copy.tone} title={conceptId ? `${copy.hint}\n\n${conceptId}` : copy.hint}>
+    <Pill
+      tone={copy.tone}
+      title={conceptId ? `${copy.hint}\n\n${conceptId}` : copy.hint}
+    >
       {copy.label}
     </Pill>
   );
@@ -63,7 +68,11 @@ export function ConceptSourceChip({
  * requirements a real JD contains. A page that showed three requirements
  * without saying this would read as "your JD only asks for three things".
  */
-export function ScanSourceNote({ scannedAgainst }: { scannedAgainst: ScannedAgainst }) {
+export function ScanSourceNote({
+  scannedAgainst,
+}: {
+  scannedAgainst: ScannedAgainst;
+}) {
   if (scannedAgainst === "m04") {
     return (
       <p className="text-xs text-ink-soft">
@@ -73,11 +82,13 @@ export function ScanSourceNote({ scannedAgainst }: { scannedAgainst: ScannedAgai
   }
   return (
     <p className="text-xs text-ink-soft">
-      Scanned against M02&rsquo;s five-concept offline lexicon, because M04 was unreachable.{" "}
+      Scanned against M02&rsquo;s five-concept offline lexicon, because M04 was
+      unreachable.{" "}
       <strong className="font-medium text-ink">
         Requirements outside those five were not looked for at all
       </strong>{" "}
-      &mdash; this is a short list because of the outage, not because the job asks for little.
+      &mdash; this is a short list because of the outage, not because the job
+      asks for little.
     </p>
   );
 }

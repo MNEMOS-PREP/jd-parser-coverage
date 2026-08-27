@@ -77,7 +77,7 @@ one table whose requirements are a flat `list[str]`:
 | FR-2.12 | ✅ | **Landed 2026-08-25.** Normalised (company, role, text) hash, looked up globally — the parse is shared, the gap is per-student. A hit answers 200 rather than 201 |
 | FR-2.13 | ⬜ | No M15 enrichment |
 | FR-2.14 | ⬜ | **P0.** Role-only mode does not exist |
-| FR-2.15 | 🟡 | The banner exists and STATES the bar. It does not say whether the student clears it — that needs their CGPA, which is M01's `entities.education.grade` |
+| FR-2.15 | ✅ | **Landed 2026-08-27.** M02 reads M01. `GET /v1/jds/{id}/match/{candidate}` says *"you have 7.2, cutoff is 7.5"* — and refuses to say it whenever the scales differ: a percentage or a 4-point GPA against a 10-point cutoff is `scale_mismatch`, not a conversion, because the factor differs per university and being wrong tells a student the opposite of the truth about a drive they can or cannot sit. No grade at all is `unknown`, never `fails`. Identity is forwarded to M01 rather than a service token, so M02 can only read resumes its own caller was already allowed to see |
 | FR-2.16 | ? | p95 never measured |
 
 ### 1.3 Three findings worth acting on before the FR list

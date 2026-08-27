@@ -22,10 +22,12 @@ from typing import Any
 from ai_core.concepts import normalise_alias
 from ai_core.dependencies import DependencyRegistry, DependencyStatus
 from ai_core.identity import Principal, may_see, principal_from_headers
+from ai_core.models import USER_AGENT
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from backend_M02_JD_Parser.match import MatchReport, build_match
 from backend_M02_JD_Parser.models import JobDescription
 from backend_M02_JD_Parser.plan import CoveragePlan, build_plan
 
@@ -575,4 +577,97 @@ def post_jd_plan(
         requirements=jd.requirements or [],
         states=coverage["states"],
         mastery=coverage["mastery"],
+    )
+
+
+def _m01_get(path: str, *, candidate_id: str) -> Any | None:
+    """GET from M01, or None.
+
+    Identity is FORWARDED, not asserted. M01 gates every resume route on
+    `X-Candidate-Id` and it is right to — a resume is the most personal thing
+    this platform holds. M02 has already checked, at `enforce_access`, that the
+    caller may see this candidate; passing the header on is how that decision
+    travels rather than being made twice with two chances to differ.
+
+    A service token would be worse here even though it is the usual answer:
+    it would let M02 read any resume, and the only thing standing between that
+    and a leak would be M02 never having a bug.
+    """
+    deps = dependency_registry()
+    dep = deps.get("M01")
+    if dep is None or not dep.base_url or not deps.is_available("M01"):
+        return None
+    request = urllib.request.Request(
+        f"{dep.base_url.rstrip('/')}{path}",
+        headers={
+            "X-Role": "student",
+            "X-Candidate-Id": candidate_id,
+            "User-Agent": USER_AGENT,
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2.0) as response:
+            return json.loads(response.read())
+    except Exception:
+        return None
+
+
+def get_candidate_resume(candidate_id: uuid.UUID) -> tuple[dict | None, str]:
+    """This candidate's active resume from M01, and why there is not one.
+
+    Returns `(resume, status)` where status is `ok`, `no_resume` or
+    `m01_unreachable`. Three states rather than a bare `None`, because "we
+    cannot reach M01" and "you have not uploaded a resume" lead a student to
+    completely different actions and the second is the only one they can fix.
+    """
+    deps = dependency_registry()
+    dep = deps.get("M01")
+    if dep is None or not dep.base_url or not deps.is_available("M01"):
+        return None, "m01_unreachable"
+
+    rows = _m01_get(f"/v1/resumes/candidate/{candidate_id}", candidate_id=str(candidate_id))
+    if rows is None:
+        return None, "m01_unreachable"
+    if not rows:
+        return None, "no_resume"
+
+    # The active one, or the newest. M01 keeps every version a student uploads
+    # and marks one active; matching against a superseded resume would report
+    # gaps the student already fixed.
+    active = [row for row in rows if row.get("is_active")]
+    chosen = (active or rows)[0]
+    return chosen, "ok"
+
+
+@router.get("/jds/{jd_id}/match/{candidate_id}", response_model=MatchReport)
+def get_jd_match(
+    jd_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    session: Session = Depends(get_db),
+):
+    """This student's resume against this posting (FR-2.15).
+
+    Distinct from `/coverage`, and the distinction is the point. Coverage asks
+    the Skill Graph what the student CAN DO, accumulated over every session
+    they have ever run. This asks the resume what a recruiter will READ about
+    them next week. The two disagree constantly, and a student needs both:
+    one tells them what to practise, the other what to rewrite.
+
+    M01 is optional. When it is down or holds no resume, the report says which
+    and carries nothing else — never an empty verdict list that reads as "you
+    passed every check".
+    """
+    jd = session.get(JobDescription, jd_id)
+    if not jd:
+        raise HTTPException(status_code=404, detail="Job Description not found")
+
+    resume, status = get_candidate_resume(candidate_id)
+
+    return build_match(
+        jd_id=str(jd_id),
+        candidate_id=str(candidate_id),
+        resume=resume,
+        resume_status=status,
+        eligibility=jd.eligibility or {},
+        requirements=jd.requirements or [],
     )
