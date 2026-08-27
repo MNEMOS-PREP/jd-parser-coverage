@@ -84,6 +84,24 @@ export function JdPage() {
         </div>
       </header>
 
+      {/* EC-2.13. Shown because the student did not write this posting: they
+          pasted something a placement list forwarded, and one poisoned JD is
+          parsed once and shared across everybody preparing for that drive. */}
+      {data.injections_removed > 0 && (
+        <div className="mb-6 rounded-md border border-contested-line bg-contested-soft px-4 py-3">
+          <p className="text-sm text-contested">
+            <span className="font-medium">
+              {data.injections_removed} part
+              {data.injections_removed === 1 ? "" : "s"} of this posting{" "}
+              {data.injections_removed === 1 ? "was" : "were"} removed.
+            </span>{" "}
+            They were written to give instructions to whatever reads the
+            document rather than to describe a job. Nothing there was used, and
+            the rest of the posting is intact.
+          </p>
+        </div>
+      )}
+
       {/* §6.3: "The UI shows these in a lighter style with a tooltip: 'This
           wasn't in the JD, but it's standard for this role.' Honesty here
           costs nothing and buys credibility."

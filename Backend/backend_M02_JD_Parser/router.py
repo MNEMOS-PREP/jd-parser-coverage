@@ -12,6 +12,7 @@ narrows the SCOPE of what we show, never the quality, and never silently):
 
 import hashlib
 import json
+import logging
 import re
 import urllib.request
 import uuid
@@ -44,6 +45,7 @@ from backend_M02_JD_Parser.match import MatchReport, build_match
 from backend_M02_JD_Parser.models import JobDescription
 from backend_M02_JD_Parser.normalise import normalise, too_thin
 from backend_M02_JD_Parser.plan import CoveragePlan, build_plan
+from backend_M02_JD_Parser.safety import neutralise, normalise_homoglyphs, scan
 
 from .extract import (
     drop_redundant,
@@ -98,6 +100,8 @@ def enforce_access(request: Request) -> Principal | None:
 
     return principal
 
+
+log = logging.getLogger("uvicorn.error")
 
 router = APIRouter(
     prefix="/v1",
@@ -282,6 +286,28 @@ def parse_jd(
             ),
         )
 
+    # ------------------------------------------------------------------
+    #  EC-2.13 — the posting is untrusted text
+    # ------------------------------------------------------------------
+    #  Before anything reads it, and long before §6.2 sends it to a model. A
+    #  resume is uploaded by the person it is about and the attack is
+    #  self-interested; a JD is pasted by a student who did not write it,
+    #  parsed ONCE, and shared across sixty students (FR-2.12). One poisoned
+    #  posting reaches everybody preparing for that drive.
+    #
+    #  Homoglyphs are folded first because they are how the patterns get
+    #  dodged, and both operations preserve length exactly — every span this
+    #  module stores is an offset into this string.
+    text = normalise_homoglyphs(text)
+    findings = scan(text)
+    if findings:
+        text = neutralise(text, findings)
+        log.warning(
+            "M02 neutralised %d instruction-shaped span(s) in a job description: %s",
+            len(findings),
+            ", ".join(sorted({f.kind for f in findings})),
+        )
+
     digest = content_digest(payload.company_name, payload.role_title, text)
     cached = session.exec(
         select(JobDescription).where(JobDescription.content_sha256 == digest)
@@ -450,6 +476,7 @@ def parse_jd(
         archetype_confidence=confidence,
         # Counted from the RESULT, not from what was suggested: a suggested
         # label that turned out to be in the document is stated, not inferred.
+        injections_removed=len(findings),
         inferred_count=sum(1 for r in requirement_set.requirements if r.source == "archetype"),
     )
     session.add(jd)

@@ -145,7 +145,7 @@ difference between a demo and a product.
 | EC-2.10 | 🟡 | Zero session history → all gaps `not_measured` and the plan is a broad diagnostic. The state is right; **the copy explaining why is not written**. |
 | EC-2.11 | ✅ | Time budget too small → `uncovered` populated AND an explicit suggestion. Also the reverse: a session longer than the posting needs reports `saturated` and says so, because a saturated plan is identical for every student and looks exactly like the template §3.2.1 warns about. |
 | EC-2.12 | ✅ | Same JD twice → hash hit, 200, instant. |
-| EC-2.13 | ⬜ | **Prompt injection in a JD is not stripped or logged.** M01 §6.7 has the filter; M02 does not call it. A JD is untrusted text that will be fed to an LLM the moment §6.2 lands, so this needs to be in place *before* that, not after. |
+| EC-2.13 | ✅ | **Landed 2026-08-27, deliberately BEFORE §6.2's model call.** M01's `safety.py` ported: homoglyph folding, five injection patterns, masked in place with `█` so every span offset survives. `injections_removed` is SHOWN, which is the opposite of M01's rule and right for the opposite reason — a resume's author is the person the filter is aimed at, a posting's author is not the person reading the screen. `persona_switch` is tighter than M01's: "Ability to act as a technical lead" is real posting prose and M01's pattern flagged it |
 | EC-2.14 | ⬜ | Two roles in one JD ("SDE or QA") → detect and ask. Not detected. |
 
 ---

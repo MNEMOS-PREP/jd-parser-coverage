@@ -174,6 +174,16 @@ export interface JobDescription {
   archetype_confidence: number;
   /** How many requirements came from the archetype rather than the posting. */
   inferred_count: number;
+  /**
+   * Instruction-shaped spans neutralised in this posting (EC-2.13). Almost
+   * always zero.
+   *
+   * Shown, unlike M01's equivalent, and for the opposite reason: M01 hides it
+   * because a resume's author IS the person the filter is aimed at, and
+   * telling them turns it into an oracle. A posting's author is not the person
+   * reading this screen — the student pasted a document somebody else wrote.
+   */
+  injections_removed: number;
   scanned_against: ScannedAgainst;
   created_at: string;
 }

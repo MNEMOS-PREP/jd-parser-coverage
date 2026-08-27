@@ -86,6 +86,18 @@ class JobDescription(SQLModel, table=True):
     #: were too close to separate — both of which are answers, and different
     #: from each other. `archetype_confidence` is recorded either way, because
     #: "we looked and were not sure" is not the same as "we did not look".
+    #: How many instruction-shaped spans were neutralised in this posting
+    #: (EC-2.13). Almost always zero.
+    #:
+    #: Recorded rather than hidden, and this is the OPPOSITE of M01's rule. M01
+    #: §6.7 is explicit that a student is not told the filter fired, because a
+    #: resume's author is the person the filter is aimed at and telling them
+    #: turns it into an oracle. A job description's author is not the person
+    #: reading this screen: the student pasted a document somebody else wrote,
+    #: and "we removed something that was trying to give instructions" is a
+    #: fact about the posting they are about to prepare against.
+    injections_removed: int = Field(default=0)
+
     role_archetype: str | None = Field(default=None)
     archetype_confidence: float = Field(default=0.0)
 
