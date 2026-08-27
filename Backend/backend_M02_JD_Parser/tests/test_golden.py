@@ -115,8 +115,20 @@ def test_the_numbers_are_reported_even_when_they_pass(capsys):
         score.add(_extracted(case), golden.keys(case.requirements))
         per_case.append((case.id, one.f1))
 
+    # Reported as two numbers, because one alone would mislead.
+    #
+    # `disjunction_heavy` cannot be reached by the deterministic path: splitting
+    # "Java/Python/C++" needs M04 to recognise two of the parts, and the offline
+    # table holds five concepts. Folding it into one total blames the parser for
+    # a correct refusal; dropping it hides a real requirement of the module.
+    offline = golden.Score()
+    for case in golden.load_jds():
+        if not case.needs_ontology:
+            offline.add(_extracted(case), golden.keys(case.requirements))
+
     with capsys.disabled():
-        print(f"\n  AC-2.3 overall: {score}")
+        print(f"\n  AC-2.3 offline-reachable: {offline}")
+        print(f"  AC-2.3 overall           : {score}")
         print(
             f"  target {golden.AC_2_3_TARGET}, floor {F1_FLOOR}, "
             f"measures_real_world={golden.MEASURES_REAL_WORLD}"

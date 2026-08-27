@@ -71,6 +71,11 @@ class GoldenJd:
     #: What a careful reader would list. Deliberately not the parser's output.
     requirements: tuple[str, ...]
     note: str = ""
+    #: True when the deterministic path CANNOT reach this annotation, because
+    #: the answer depends on M04. Scored anyway and reported separately: hiding
+    #: it would flatter the offline number, and removing it would hide a real
+    #: requirement of the module.
+    needs_ontology: bool = False
 
 
 @dataclass(frozen=True)
@@ -94,6 +99,7 @@ def load_jds() -> list[GoldenJd]:
             text=case["text"],
             requirements=tuple(case["requirements"]),
             note=case.get("note", ""),
+            needs_ontology=bool(case.get("needs_ontology")),
         )
         for case in _load()["cases"]
     ]

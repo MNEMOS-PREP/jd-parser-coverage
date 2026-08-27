@@ -13,16 +13,20 @@
     "are things it misses, on purpose, because a golden set that agrees with the",
     "implementation measures nothing.",
     "",
-    "The spec asks for 25. There are 12."
+    "The spec asks for 25. There are 12.",
+    "A case marked `needs_ontology` cannot be reached by the deterministic path alone. It is scored anyway and reported separately, because hiding it would flatter the offline number and removing it would hide a real requirement of the module."
   ],
-
   "cases": [
     {
       "id": "campus_tiny",
       "note": "§3.2.1 trap 1 calls this the MEDIAN campus JD, not the edge case.",
       "role": "Software Engineer Trainee",
       "text": "Looking for SDE trainees. Good knowledge of DSA, OOPs and DBMS.",
-      "requirements": ["DSA", "OOPs", "DBMS"]
+      "requirements": [
+        "DSA",
+        "OOPs",
+        "DBMS"
+      ]
     },
     {
       "id": "campus_standard",
@@ -45,7 +49,14 @@
       "note": "Bullets with requirements written as sentences — six words, no delimiter.",
       "role": "Backend Engineer",
       "text": "Backend Engineer\n\nRequirements:\n- Strong Python and SQL\n- Experience with Docker and Kubernetes\n- Familiarity with Git\n\nNice to have:\n- Exposure to Kafka",
-      "requirements": ["Python", "SQL", "Docker", "Kubernetes", "Git", "Kafka"]
+      "requirements": [
+        "Python",
+        "SQL",
+        "Docker",
+        "Kubernetes",
+        "Git",
+        "Kafka"
+      ]
     },
     {
       "id": "table_style",
@@ -70,11 +81,15 @@
       "note": "No headings, no bullets. The parser is weakest here and should be.",
       "role": "Data Analyst",
       "text": "We are hiring a Data Analyst. You will write SQL against our warehouse, build dashboards in Tableau, and present findings to business stakeholders. Comfort with Python is useful.",
-      "requirements": ["SQL", "Tableau", "Python"]
+      "requirements": [
+        "SQL",
+        "Tableau",
+        "Python"
+      ]
     },
     {
       "id": "disjunction_heavy",
-      "note": "EC-2.3. Three separate choices in one posting.",
+      "note": "EC-2.3. Three separate choices in one posting. NEEDS THE ONTOLOGY: `Java/Python/C++` splits only when M04 recognises at least two parts, and the offline table holds five concepts — so with M04 down the parser correctly refuses to split it and correctly scores badly here. The annotation describes what a reader sees, not what the degraded path can reach.",
       "role": "Backend Engineer",
       "text": "Requirements:\n- Java/Python/C++\n- Experience with Docker or Kubernetes\n- Any one of MySQL, PostgreSQL or Oracle",
       "requirements": [
@@ -86,11 +101,12 @@
         "MySQL",
         "PostgreSQL",
         "Oracle"
-      ]
+      ],
+      "needs_ontology": true
     },
     {
       "id": "soft_skills",
-      "note": "§3.2.1 trap 3's three tiers, in one posting.",
+      "note": "§3.2.1 trap 3's three tiers, in one posting. KNOWN WART: 'Excellent written and verbal communication' splits on 'and' into 'written' and 'verbal communication', and 'written' is an adjective rather than a skill. No structural rule separates it from 'SQL and data structures' or 'communication and interpersonal skills', both of which MUST split — case, length and position all fail. It needs to know that 'written' is an adjective and 'SQL' is a noun, which is lexical knowledge, and the model pass cannot help because this document is all bullets and the triage gives it nothing to read. Left unfixed rather than fixed badly: a hardcoded adjective list would break the two cases that currently score 1.000.",
       "role": "Associate Consultant",
       "text": "Requirements:\n- Excellent written and verbal communication\n- Must be a team player\n- A go-getter attitude\n- Strong analytical reasoning",
       "requirements": [
@@ -118,14 +134,22 @@
       "note": "EC-2.4. The job is 14 words inside 90 of mail furniture.",
       "role": "Software Engineer",
       "text": "From: placements@example.edu\nSent: Monday 4 August\nSubject: FW: Zoho drive\n\nDear students,\n\nPlease find the JD below. Register on the portal by Friday.\n\nRequirements: C++, Data Structures, Operating Systems.\n\nRegards,\nPlacement Cell, Example University\nwww.example.edu\n\n-------- Forwarded message --------\nThis email and any attachments are confidential and intended solely for the intended recipient of this message. If you have received it in error please delete it.\n© 2026 Example University. All rights reserved.",
-      "requirements": ["C++", "Data Structures", "Operating Systems"]
+      "requirements": [
+        "C++",
+        "Data Structures",
+        "Operating Systems"
+      ]
     },
     {
       "id": "boilerplate_footer",
       "note": "The brochure failure: a footer repeated once per page.",
       "role": "Backend Engineer",
       "text": "Requirements:\n- Python\n© 2026-2027 Acme. All rights reserved.\n- SQL\n© 2026-2027 Acme. All rights reserved.\n- Docker\n© 2026-2027 Acme. All rights reserved.",
-      "requirements": ["Python", "SQL", "Docker"]
+      "requirements": [
+        "Python",
+        "SQL",
+        "Docker"
+      ]
     },
     {
       "id": "eligibility_only",
@@ -159,7 +183,6 @@
       ]
     }
   ],
-
   "_disjunction_comment": [
     "AC-2.4: disjunction detection accuracy >= 0.95. §10 asks for 30 real",
     "strings; these are 30, drawn from the phrasings campus postings use.",
@@ -168,38 +191,174 @@
     "half the value of the set, because splitting 'CI/CD' fabricates a skill",
     "and fabricating is worse than missing."
   ],
-
   "disjunctions": [
-    { "text": "Java/Python/C++", "parts": ["Java", "Python", "C++"] },
-    { "text": "Java or Python", "parts": ["Java", "Python"] },
-    { "text": "either Java or Kotlin", "parts": ["Java", "Kotlin"] },
-    { "text": "Docker or Kubernetes", "parts": ["Docker", "Kubernetes"] },
-    { "text": "MySQL, PostgreSQL or Oracle", "parts": ["MySQL", "PostgreSQL", "Oracle"] },
-    { "text": "React or Angular", "parts": ["React", "Angular"] },
-    { "text": "AWS or Azure", "parts": ["AWS", "Azure"] },
-    { "text": "C++ or Java", "parts": ["C++", "Java"] },
-    { "text": "Python or R", "parts": ["Python", "R"] },
-    { "text": "Angular/React/Vue", "parts": ["Angular", "React", "Vue"] },
-    { "text": "MySQL/PostgreSQL", "parts": ["MySQL", "PostgreSQL"] },
-    { "text": "Spring or Django", "parts": ["Spring", "Django"] },
-    { "text": "TensorFlow or PyTorch", "parts": ["TensorFlow", "PyTorch"] },
-    { "text": "Jenkins or GitLab CI", "parts": ["Jenkins", "GitLab CI"] },
-    { "text": "Kotlin or Swift", "parts": ["Kotlin", "Swift"] },
-
-    { "text": "CI/CD", "parts": [] },
-    { "text": "TCP/IP", "parts": [] },
-    { "text": "CI/CD pipelines", "parts": [] },
-    { "text": "I/O", "parts": [] },
-    { "text": "OS/2", "parts": [] },
-    { "text": "A/B testing", "parts": [] },
-    { "text": "Node.js", "parts": [] },
-    { "text": "24/7 support", "parts": [] },
-    { "text": ".NET", "parts": [] },
-    { "text": "client/server architecture", "parts": [] },
-    { "text": "Transactions and ACID", "parts": [] },
-    { "text": "read/write throughput", "parts": [] },
-    { "text": "Python", "parts": [] },
-    { "text": "Data Structures", "parts": [] },
-    { "text": "REST APIs", "parts": [] }
+    {
+      "text": "Java/Python/C++",
+      "parts": [
+        "Java",
+        "Python",
+        "C++"
+      ]
+    },
+    {
+      "text": "Java or Python",
+      "parts": [
+        "Java",
+        "Python"
+      ]
+    },
+    {
+      "text": "either Java or Kotlin",
+      "parts": [
+        "Java",
+        "Kotlin"
+      ]
+    },
+    {
+      "text": "Docker or Kubernetes",
+      "parts": [
+        "Docker",
+        "Kubernetes"
+      ]
+    },
+    {
+      "text": "MySQL, PostgreSQL or Oracle",
+      "parts": [
+        "MySQL",
+        "PostgreSQL",
+        "Oracle"
+      ]
+    },
+    {
+      "text": "React or Angular",
+      "parts": [
+        "React",
+        "Angular"
+      ]
+    },
+    {
+      "text": "AWS or Azure",
+      "parts": [
+        "AWS",
+        "Azure"
+      ]
+    },
+    {
+      "text": "C++ or Java",
+      "parts": [
+        "C++",
+        "Java"
+      ]
+    },
+    {
+      "text": "Python or R",
+      "parts": [
+        "Python",
+        "R"
+      ]
+    },
+    {
+      "text": "Angular/React/Vue",
+      "parts": [
+        "Angular",
+        "React",
+        "Vue"
+      ]
+    },
+    {
+      "text": "MySQL/PostgreSQL",
+      "parts": [
+        "MySQL",
+        "PostgreSQL"
+      ]
+    },
+    {
+      "text": "Spring or Django",
+      "parts": [
+        "Spring",
+        "Django"
+      ]
+    },
+    {
+      "text": "TensorFlow or PyTorch",
+      "parts": [
+        "TensorFlow",
+        "PyTorch"
+      ]
+    },
+    {
+      "text": "Jenkins or GitLab CI",
+      "parts": [
+        "Jenkins",
+        "GitLab CI"
+      ]
+    },
+    {
+      "text": "Kotlin or Swift",
+      "parts": [
+        "Kotlin",
+        "Swift"
+      ]
+    },
+    {
+      "text": "CI/CD",
+      "parts": []
+    },
+    {
+      "text": "TCP/IP",
+      "parts": []
+    },
+    {
+      "text": "CI/CD pipelines",
+      "parts": []
+    },
+    {
+      "text": "I/O",
+      "parts": []
+    },
+    {
+      "text": "OS/2",
+      "parts": []
+    },
+    {
+      "text": "A/B testing",
+      "parts": []
+    },
+    {
+      "text": "Node.js",
+      "parts": []
+    },
+    {
+      "text": "24/7 support",
+      "parts": []
+    },
+    {
+      "text": ".NET",
+      "parts": []
+    },
+    {
+      "text": "client/server architecture",
+      "parts": []
+    },
+    {
+      "text": "Transactions and ACID",
+      "parts": []
+    },
+    {
+      "text": "read/write throughput",
+      "parts": []
+    },
+    {
+      "text": "Python",
+      "parts": []
+    },
+    {
+      "text": "Data Structures",
+      "parts": []
+    },
+    {
+      "text": "REST APIs",
+      "parts": []
+    }
   ]
 }
