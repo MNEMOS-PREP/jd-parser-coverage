@@ -1,15 +1,24 @@
 # M02 — TODO · JD Parser & Coverage Planner
 
-Running list for **M02 JD Parser & Coverage Planner**.
-Spec: [M02_JD_Parser.md](M02_JD_Parser.md)
+Task list for taking **M02 JD Parser & Coverage Planner** to 100% of
+[M02_JD_Parser.md](M02_JD_Parser.md).
 
-> **Read this first when starting a session on M02.** It is the running state
-> of the module: what is done, what is next, and what is deliberately deferred.
+> **This is a copy.** The one that moves lives in the module's own repo at
+> `jd-parser-coverage/plan_in_depth/M02_JD_Parser_TODO.md`, next to the code it
+> describes. Sync it here when something lands, so this directory holds one view
+> of all nineteen modules.
+
+> **Read this first when starting a session on M02.** It is the running state of
+> the module: what is done, what is next, and what is deliberately deferred.
 > Update it as things land — a stale list is worse than no list, because the
 > next session trusts it.
 
-- **Phase:** 1 · **Owner:** E3 · **Ports:** API `8102`, web `5202`
-- **Repo:** `jd-parser-coverage`
+- **Phase:** 1 · **Owner:** E3 · **Repo:** `jd-parser-coverage`
+- **Ports:** API `8102`, web `5202`
+- **Run the suite:** `Backend/.venv/Scripts/python -m pytest`
+- **Run the gates only:** `Backend/.venv/Scripts/python -m pytest -m gate`
+- **Lint:** `Backend/.venv/Scripts/python -m ruff check Backend/`
+- **Frontend:** `cd Frontend/frontend_M02_JD_Parser && npx tsc --noEmit && npx vite build`
 
 Legend: ✅ done · 🟡 partly done · ⬜ not started
 
@@ -25,7 +34,24 @@ platform's contracts — character offsets, per-fact provenance, permanent
 evidence — are more demanding than general-purpose tools assume, so integration
 usually costs more than reimplementing the one idea we actually wanted.
 
-_Nothing scouted for this module yet._
+### ⬜ The placement-cell calendar is a one-day integration and the largest win
+
+§2.3 says it outright: *"The campus-drive chips are the highest-value element on
+this screen. The placement cell already publishes the calendar; pre-loading it
+means most students never type anything. This is a one-day integration that
+removes the largest friction point in the product."*
+
+Nothing about it is built. It is not an FR of its own, which is why it keeps
+falling off the list — it lives inside FR-2.1's "company+role selection" and
+reads like a UI detail. It is not a UI detail: it is the difference between a
+student pasting a badly formatted email and a student clicking a chip.
+
+### ⬜ A JD diff between two drives at the same company
+
+TCS NQT and TCS Digital are two drives and one company (§3.2.5). A student
+preparing for both currently parses two postings and gets two unrelated screens.
+The requirement sets overlap heavily and the interesting part is the delta.
+Cheap once `content_sha256` and `requirements` exist, which they do.
 
 ---
 
@@ -33,63 +59,187 @@ _Nothing scouted for this module yet._
 
 | | |
 |---|---|
-| Status | **The parser half exists. The coverage planner does not.** |
-| Backend tests passing | **37** |
-| Release gates (`-m gate`) | **6** |
-| Route decorators | **7** |
-| Frontend | present — `JdPage`, `ParsePage`, `CoveragePanel`, `DepsPage` |
+| Status | **Phase 1 substantially built.** 135 backend tests, ruff and tsc clean, frontend builds. |
+| Suite | `135 passed` · gates green |
+| Identity | Router-level `enforce_access` on `ai_core.identity`. JD routes deliberately open; `candidate_id` routes gated. |
+| Upstreams | M04 (ontology, mastery) and M01 (resume) — both optional, both declared in `module.json` with an `on_missing` a student can act on. |
 
-*Audited 2026-08-25 in code, not from this file. This row replaced "Not
-started", which was written before the module was.*
+### What exists end to end
+
+A student pastes or uploads a posting; it is normalised, hashed and cached
+across students; requirements come out with source spans, necessity, weight,
+kind, `measured_by` and disjunctive groups; eligibility is read whole; the gap
+is computed against M04's Skill Graph; a coverage plan allocates question budget
+under a time constraint; and — as of 2026-08-27 — the whole thing can be held up
+against the student's own resume from M01.
+
+### What is conspicuously absent
+
+**Doors 1 and 3 of Screen 1.** No company picker, no drive chips, no role
+archetype. Door 3 is marked *mandatory* in the spec and is FR-2.14, a P0. A
+student in September with no drive scheduled cannot use this module at all.
+
+**Everything downstream of the plan.** FR-2.11's live coverage ledger needs M05
+and M13. The plan is produced and nothing consumes it yet.
 
 ---
 
-### 1.1 What is built, and one part of it is the hard part
+## 2. Functional requirements
 
-- ✅ **FR-2.5** — every requirement resolved to a `concept_id` or kept as
-      unmapped, with `concept_source` recording whether M04 confirmed the id or
-      an offline table guessed it.
-- ✅ **FR-2.7, and it is the one worth having.** `GET /jds/{id}/coverage/{cid}`
-      treats **"not measured" as a distinct state**, and `coverage_score` is a
-      fraction of the requirements that could actually be checked — never of
-      all of them — so an unmeasured requirement can never depress it. That is
-      the trap this endpoint exists to avoid and it is avoided.
-
-### 1.2 What is missing — §5's contracts, almost entirely
-
-The spec declares seven types. **None of them exist in `models.py`**, which is
-one table whose requirements are a flat `list[str]`:
-
-    Requirement · RequirementGroup · EligibilityCriteria
-    RequirementSet · Gap · CoverageAllocation · CoveragePlan
+Spec §4. This is the authoritative list; §3 below is only the inter-module half.
 
 | FR | | |
 |---|---|---|
-| FR-2.1 | 🟡 | **PDF/DOCX/TXT landed 2026-08-27.** `POST /v1/jds/upload` sniffs by magic bytes (a renamed `.docx` is still read as one), converts to text, and calls `parse_jd` — no parsing logic of its own, so a pasted and an uploaded JD are byte-identical and the second comes back 200 from the cache. DOCX tables flatten to `key: value`, which is how campus postings write the eligibility block. No OCR: a scan is refused with a sentence rather than parsed into an empty JD, which would render as a clean screen saying the job asks for nothing. Still missing: the company picker and the drives feed (doors 1 and 3) |
-| FR-2.2 | ✅ | **Complete 2026-08-27.** Spans, `necessity`, `weight`, `mentions`, and now `kind`, `measured_by` and `seniority_signal`. §3.2.1 trap 3 is closed in all three tiers: "communication" → `[communication]`, "team player" → `[behavioural]`, "go-getter attitude" → `[]` and said out loud. Derived from a lexicon rather than §6.2's LLM call — deterministic, auditable, and the fallback that call needs behind it anyway. Everything defaults to the CHEAPEST round, because overpricing under-fills a session and underpricing breaks a promise |
-| FR-2.3 | 🟡 | **Landed 2026-08-27.** "Docker or Kubernetes" is one `RequirementGroup` with `satisfaction: any_of` over two requirements, not three requirements. The alternatives share one requirement's weight. A slash splits only when the ontology recognises ≥2 of its parts — `Java/Python/C++` does, `CI/CD` does not — so with M04 down nothing splits and slashed requirements stay whole rather than being invented into three. `n_of` is not emitted because no posting seen writes "at least two of" |
-| FR-2.4 | ✅ | **Complete 2026-08-27.** CGPA, active AND history backlogs, batch, bond, `allowed_branches`, `location`, and both package figures — every §5 field. The slash IS split for branches (nobody writes a degree called "CSE/IT") and nowhere else. `package_lpa_fixed` is separate because a 6.5 LPA headline with 2 LPA variable is a 4.5 LPA salary and students compare the wrong one. Also fixed: `Bond: 18 months` read as NO BOND — the pattern wanted a space where a posting writes a colon, on this module's own sample JD |
-| FR-2.6 | ⬜ | No role archetype inference |
-| FR-2.8 | 🟡 | **Landed 2026-08-27, round pricing same day.** §6.5's solver: priority `weight × (1 − mastery)`, a guaranteed question per measurable must-have (FR-2.9), the rest by marginal value per minute under `log(1 + q)`, capped at 4. Questions are now priced by `measured_by` — 3.5 min verbal, 12 coding, 20 design — and a requirement measured several ways is priced at the dearest. §10's differentiation test passes. Missing: `rounds` as a structured list, and the ILP fallback §6.5 names for infeasible must-have sets (`uncovered` + `suggestion` carry that case today) |
-| FR-2.9 | ✅ | **Landed 2026-08-27** with FR-2.8. The must-have floor is seeded before any second question is allocated, in severity order, so when the budget runs out it is the least severe must that goes `uncovered` rather than whichever the posting wrote last |
-| FR-2.10 | ⬜ | Requirements are not editable |
-| FR-2.11 | ⬜ | No live coverage, no post-session report |
-| FR-2.12 | ✅ | **Landed 2026-08-25.** Normalised (company, role, text) hash, looked up globally — the parse is shared, the gap is per-student. A hit answers 200 rather than 201 |
-| FR-2.13 | ⬜ | No M15 enrichment |
-| FR-2.14 | ⬜ | **P0.** Role-only mode does not exist |
-| FR-2.15 | ✅ | **Landed 2026-08-27.** M02 reads M01. `GET /v1/jds/{id}/match/{candidate}` says *"you have 7.2, cutoff is 7.5"* — and refuses to say it whenever the scales differ: a percentage or a 4-point GPA against a 10-point cutoff is `scale_mismatch`, not a conversion, because the factor differs per university and being wrong tells a student the opposite of the truth about a drive they can or cannot sit. No grade at all is `unknown`, never `fails`. Identity is forwarded to M01 rather than a service token, so M02 can only read resumes its own caller was already allowed to see |
-| FR-2.16 | ? | p95 never measured |
+| FR-2.1 | 🟡 | **PDF/DOCX/TXT landed 2026-08-27.** `POST /v1/jds/upload` sniffs by magic bytes (a renamed `.docx` is still read as one), converts to text, and calls `parse_jd` — no parsing logic of its own, so pasted and uploaded produce the same row and the second answers 200 from the cache. DOCX tables flatten to `key: value`, which is how campus postings write the eligibility block. No OCR: a scan is refused with a sentence rather than parsed into an empty JD, which would render as a clean screen saying the job asks for nothing. **Still missing: the company picker and the drives feed (doors 1 and 3).** |
+| FR-2.2 | ✅ | **Complete 2026-08-27.** `SourceSpan`, `necessity`, `weight`, `mentions`, `kind`, `measured_by`, `seniority_signal`. §3.2.1 trap 3 closed in all three tiers: "communication" → `[communication]`, "team player" → `[behavioural]`, "go-getter attitude" → `[]` and said out loud. Lexicon-derived rather than §6.2's LLM call — deterministic, auditable, and the fallback that call needs behind it anyway. Everything defaults to the CHEAPEST round: overpricing under-fills a session, underpricing breaks a promise. |
+| FR-2.3 | 🟡 | **Landed 2026-08-27.** "Docker or Kubernetes" is one `RequirementGroup` with `satisfaction: any_of` over two requirements, not three. Alternatives share one requirement's weight, and an answered choice is excluded from the gap, the plan and the resume match. A slash splits only when the ontology recognises ≥2 parts — `Java/Python/C++` does, `CI/CD` does not — so with M04 down nothing splits rather than being invented into three. **Missing: `n_of`**, deliberately — no posting seen writes "at least two of". |
+| FR-2.4 | ✅ | **Complete 2026-08-27.** CGPA, active AND history backlogs, batch, bond, `allowed_branches`, `location`, both package figures. `package_lpa_fixed` is separate because a 6.5 LPA headline with 2 LPA variable is a 4.5 LPA salary and students compare the wrong one. The slash IS split for branches and nowhere else. |
+| FR-2.5 | 🟡 | Every requirement carries `concept_ids` and `measurable`, and `concept_source` records whether M04 resolved it or the offline table guessed. **Missing: the offline table holds five concepts**, so with M04 down almost everything is unresolved — honest, and thin. |
+| FR-2.6 | ⬜ | **No role archetype inference.** §6.3 wants a match against an archetype table and a backfill of missing requirements marked `source=archetype`. Blocks FR-2.14 and EC-2.1. |
+| FR-2.7 | 🟡 | Per-requirement gap with `not_measured` as a distinct state, `unmeasurable` as another, and `met_by_alternative` as a third. **Missing: the confidence discount** — §6.5 wants `confidence < 0.25 → not_measured`, and M04 publishes no standard error yet. |
+| FR-2.8 | 🟡 | **Landed 2026-08-27.** §6.5's solver: priority `weight × (1 − mastery)`, a guaranteed question per measurable must-have, the rest by marginal value per minute under `log(1 + q)`, capped at 4. Questions are priced by `measured_by` — 3.5 min verbal, 12 coding, 20 design — and a requirement measured several ways is priced at the dearest. **Missing: `rounds` as a structured list**, and the ILP fallback §6.5 names for infeasible must-have sets (`uncovered` + `suggestion` carry that case today). |
+| FR-2.9 | ✅ | **Landed 2026-08-27.** The must-have floor is seeded before any second question is allocated, in severity order, so a budget that runs out drops the *least* severe must rather than whichever the posting wrote last. Gate: `test_every_measurable_must_have_gets_at_least_one_question`. |
+| FR-2.10 | ⬜ | **Requirements are not editable.** No `PATCH`, no re-plan. P1, and the cheapest remaining P1. |
+| FR-2.11 | ⬜ | No live coverage ledger, no post-session report. **Blocked** — needs M05 to write `asked` rows and M13 to move them to `scored`. |
+| FR-2.12 | ✅ | **Landed 2026-08-25.** Normalised (company, role, text) hash, looked up globally — the parse is shared, the gap is per-student. A hit answers 200 rather than 201. |
+| FR-2.13 | ⬜ | No M15 company-brief enrichment. **Blocked** — M15 not wired. |
+| FR-2.14 | ⬜ | **P0. Role-only mode does not exist.** §2.3 calls door 3 mandatory: *"a student in September with no drive scheduled still needs to practise. Requiring a JD to use the product would be a self-inflicted wound."* Depends on FR-2.6. |
+| FR-2.15 | ✅ | **Landed 2026-08-27.** M02 reads M01. `GET /v1/jds/{id}/match/{candidate}` says *"you have 7.2, cutoff is 7.5"* — and refuses to say it whenever the scales differ: a percentage or a 4-point GPA against a 10-point cutoff is `scale_mismatch`, not a conversion. No grade at all is `unknown`, never `fails`. Identity is forwarded to M01 rather than held as a service token, so M02 can only read resumes its own caller was already allowed to see. |
+| FR-2.16 | ⬜ | **p95 never measured.** §11 budgets ≤ 8 s cold and ≤ 1 s cached. Nothing is timed, so the number is unknown rather than met or missed. |
 
-### 1.3 Three findings worth acting on before the FR list
+---
+
+## 3. Acceptance gates
+
+Spec §13. A gate is release-blocking; the rest are tracked.
+
+| AC | | |
+|---|---|---|
+| AC-2.1 **[GATE]** | ✅ | Every measurable must-have gets ≥1 probe. Enforced in `build_plan` as a floor seeded before any second question, and asserted. |
+| AC-2.2 **[GATE]** | 🟡 | `not_measured` never renders as a number — `MasteryBar` has no bar for it and `coverage_score` is `null`, never `0.0`, when nothing was measured. **The UI test the gate names does not exist**; this is asserted on the backend only. |
+| AC-2.3 | ⬜ | **Requirement extraction F1 on a golden set: no golden set.** §10 wants 25 hand-annotated JDs. Until it exists, every extraction fix is verified anecdotally and a regression is invisible. **This is the single biggest hole in the module's testing.** |
+| AC-2.4 | ⬜ | Disjunction accuracy ≥ 0.95 — same problem, same missing corpus. §10 asks for 30 real disjunction strings specifically. |
+| AC-2.5 | ⬜ | p95 cold parse ≤ 8 s. Never measured — see FR-2.16. |
+| AC-2.6 | ✅ | Plans differ ≥ 30% between students on one JD. `test_two_students_on_one_posting_get_different_plans` asserts it directionally: the student weak on SQL is asked about SQL more, and the reverse for DP. |
+| AC-2.7 | ⬜ | Drive-chip vs manual-paste ratio. Nothing to track — no chips. |
+| AC-2.8 | ⬜ | "The interview matched the JD" ≥ 80%. Needs a post-session survey and a session to survey. |
+
+---
+
+## 4. Edge cases
+
+Spec §12. Listed in full because several are one afternoon each and are the
+difference between a demo and a product.
+
+| EC | | |
+|---|---|---|
+| EC-2.1 | ⬜ | 40-word JD → archetype backfill to 8 requirements. Needs FR-2.6. |
+| EC-2.2 | ⬜ | 3,000-word JD with 40 requirements → display capped at 8 by weight, all stored, plan uses top 12. **Weights exist now, so this is a display cap and a slice** — cheap, and not done. |
+| EC-2.3 | ✅ | "Java/Python/C++" → `RequirementGroup(any_of)`, satisfied if any one is strong. |
+| EC-2.4 | ⬜ | **JD is an email thread.** §6.1 wants a boilerplate stripper built from 50 real campus emails — signatures, "Regards, Placement Cell", forwarded headers, disclaimers — and a prompt for a cleaner paste if < 30 words survive. Nothing strips anything today. Given §1 calls the input "usually a badly formatted blob from a placement-portal email", this is closer to the main path than to an edge case. |
+| EC-2.5 | ⬜ | Non-technical role (HR, Sales) → technical rounds dropped. Needs FR-2.6 archetypes. `measured_by` now makes the second half possible. |
+| EC-2.6 | ⬜ | JD in Hindi/Tamil → detect, translate for parsing, keep the original for display. Nothing detects language. |
+| EC-2.7 | ⬜ | Unknown company → archetype-only path, no fabricated company detail. The second half holds by construction (nothing fabricates); the first needs FR-2.6. |
+| EC-2.8 | ✅ | Requirement maps to no concept → `measurable=false`, and the UI says "can't be tested here" with a hatched mark rather than a zero score. |
+| EC-2.9 | ⬜ | All requirements already strong → Final Boss difficulty and stretch items. The plan currently allocates normally and says nothing. |
+| EC-2.10 | 🟡 | Zero session history → all gaps `not_measured` and the plan is a broad diagnostic. The state is right; **the copy explaining why is not written**. |
+| EC-2.11 | ✅ | Time budget too small → `uncovered` populated AND an explicit suggestion. Also the reverse: a session longer than the posting needs reports `saturated` and says so, because a saturated plan is identical for every student and looks exactly like the template §3.2.1 warns about. |
+| EC-2.12 | ✅ | Same JD twice → hash hit, 200, instant. |
+| EC-2.13 | ⬜ | **Prompt injection in a JD is not stripped or logged.** M01 §6.7 has the filter; M02 does not call it. A JD is untrusted text that will be fed to an LLM the moment §6.2 lands, so this needs to be in place *before* that, not after. |
+| EC-2.14 | ⬜ | Two roles in one JD ("SDE or QA") → detect and ask. Not detected. |
+
+---
+
+## 5. Data model
+
+Spec §5 declares seven types.
+
+| Type | | |
+|---|---|---|
+| `Requirement` | ✅ | Every field. |
+| `RequirementGroup` | 🟡 | `any_of` only; `all_of` is the default and carries no information, `n_of` is unwritten by real postings. |
+| `EligibilityCriteria` | ✅ | Every field. |
+| `RequirementSet` | 🟡 | Exists as a return type from `locate`, not as a persisted row with an id. FR-2.10's editing needs the persisted version. |
+| `Gap` | 🟡 | Computed and returned; `evidence_session_ids` and `closable_hours_estimate` are absent — both need M04 to publish more than a mastery scalar. |
+| `CoverageAllocation` | ✅ | Including `rationale` as a sentence, which §5 marks "shown in the UI". |
+| `CoveragePlan` | 🟡 | No `id`, no `requirement_set_id`, no `rounds`. The first two need a persisted plan; `rounds` needs a round-packing pass over the allocations, which is now possible since `measured_by` landed. |
+
+---
+
+## 6. Screens
+
+Spec §2.3.
+
+| Screen | | |
+|---|---|---|
+| 1 — Input, three doors | 🟡 | Door 2 only, now with file upload as well as paste. **Doors 1 and 3 absent, and door 3 is mandatory.** The drive chips — "the highest-value element on this screen" — do not exist. |
+| 2 — Requirement read-back | ✅ | Grouped by necessity with each band's share of the total ask, weights, disjunctions rendered as one row, eligibility banner, per-requirement provenance, and the coverage plan beneath it. |
+| 3 — The gap | 🟡 | `CoveragePanel` shows every requirement's state and never renders `not_measured` as a number. **The spec's "your biggest gap: DBMS — specifically normalisation and indexing, you broke on both in your last session" needs M04 evidence links**, which do not exist. |
+| Match — resume vs posting | ✅ | Not in the spec, added 2026-08-27. Confirmation page then analysis: eligibility verdicts first and alone (§3.2.2 — a hard filter, not a topic), then risks ranked with `blocking` reserved for eligibility, then what the resume evidences. |
+
+---
+
+## 7. Deferred — inter-module
+
+Not gaps in M02. Each needs a module that is not built or not wired yet, and
+each is listed so it is not mistaken for an oversight.
+
+- **FR-2.11 live coverage ledger** — M05 writes `asked`, M13 moves it to
+  `scored`. §6.6 calls this *"the mechanism that makes coverage a guarantee
+  rather than an intention"*, and it is the one part of the module's promise
+  that cannot be kept alone.
+- **FR-2.13 company brief** — M15. §6.7.
+- **`Gap.evidence_session_ids` and `closable_hours_estimate`** — M04 publishes a
+  mastery scalar and no provenance behind it, so "you broke on both in your last
+  session" cannot be said.
+- **FR-2.7's confidence discount** — M04 publishes no standard error, so
+  §6.5's `confidence < 0.25 → not_measured` is approximated by "M04 returned
+  `None`", which is a coarser signal.
+- **M12/M17 for `measured_by: communication`** — the classification is made and
+  nothing consumes it yet.
+
+---
+
+## 8. Known debt
+
+- **`extract.py` is a copy of M01's.** Both are ~1,200 lines and diverging: M02
+  treats a bullet as an enumeration signal whatever its length and M01
+  deliberately does not. The shared half belongs in `ai_core.concepts`, whose
+  own docstring already names both callers. Two bugs found on 2026-08-27 had to
+  be fixed twice, in two repos, on the same day — that is the cost, and it will
+  recur.
+- **The offline concept table holds five entries.** With M04 down the module is
+  honest and nearly useless. Not wrong, but the degraded path is much thinner
+  than "degraded" suggests.
+- **The heading vocabulary is 30 fixed phrases.** A posting that writes
+  `Responsibilities:` or `What you will do:` extracts *nothing* from the bullets
+  beneath it. Not a vocabulary problem: adding `responsibilities` pulls in
+  "- Design scalable systems" as a fabricated requirement. The real fix is a
+  label-level test of *does this name a thing rather than an action*.
+- **No golden corpus.** AC-2.3 and AC-2.4 cannot be measured, so every
+  extraction change is verified by reading output on one or two examples.
+  Today alone that method found four real bugs — which is the argument both for
+  and against it.
+
+---
+
+## 9. Findings log
+
+Kept because the reasoning is the useful part: each of these was found by
+running the module rather than by reading it, and the ones still open are open
+for a stated reason.
+
+### Findings, and what happened to them
 
 - ✅ **Eligibility (2026-08-25).** The field its own comment promised now
       exists. Keeping these OUT of the requirement list was always right; the
       bug was keeping them nowhere.
-- ⬜ **The comparison, FR-2.15.** "You have 7.2, cutoff is 7.5" needs the
+- ✅ **The comparison, FR-2.15 (2026-08-27).** "You have 7.2, cutoff is 7.5" needed the
       student's CGPA. M01 already extracts it (`entities.education.grade`) and
-      M02 does not read M01. Asserting a student falls short on a number this
-      module does not hold would be the worst thing here to be wrong about, so
-      the banner states the bar and stops.
+      M02 did not read M01. M02 reads it now, and refuses the comparison
+      wherever the scales differ — a percentage or a 4-point GPA against a
+      10-point cutoff is `scale_mismatch`, not a conversion, because asserting
+      that a student falls short is the worst thing here to be wrong about.
 - ✅ **Spans (2026-08-25).** Every requirement carries an offset into
       `raw_text`, asserted at `-m gate` to resolve verbatim — a span that points
       at the wrong words is worse than no span, because it is a citation.
@@ -116,12 +266,14 @@ one table whose requirements are a flat `list[str]`:
       action*, which is the same judgement `_COMMON_ENGLISH` is a crude
       stand-in for. Own change, own tests.
 - ⬜ **`extract.py` is a copy of M01's.** Same functions, same
-      `_COMMON_ENGLISH` guard, same `_split_conjunctions`. It is untracked, so
-      it was copied in recently — and M01's hyphen-wrap fix of 2026-08-25 is
-      NOT in it. This is the drift `Platform_Core` exists to prevent; the
-      shared half belongs there or in one module that owns it.
+      `_COMMON_ENGLISH` guard, same `_split_conjunctions`. On 2026-08-27 two
+      bugs had to be fixed twice, in two repos, on the same day: the
+      `drop_redundant` substring test and the conjunction-part length cap.
+      That is the cost, it is now measured rather than predicted, and it will
+      recur. The shared half belongs in `ai_core.concepts`, whose own docstring
+      already names both callers.
 
-### 1.3c Landed 2026-08-27
+### Landed 2026-08-27
 
 - ✅ **The phantom compound.** `- Experience with Docker or Kubernetes`
       produced THREE requirements: both alternatives plus a "Docker or
@@ -172,7 +324,7 @@ one table whose requirements are a flat `list[str]`:
       demands anyway. Every `JobDescription` and `Requirement` field must now
       be declared in `types.ts`.
 
-### 1.3b Landed 2026-08-25
+### Landed 2026-08-25
 
 - ✅ **Identity.** `/coverage/{candidate_id}` took the id from the caller and
       trusted it — any student's gap analysis to anyone who guessed a UUID.
@@ -183,27 +335,3 @@ one table whose requirements are a flat `list[str]`:
       every raw `fetch` sends identity. M02 was already in the good state; this
       is what keeps it there while the module grows.
 - ✅ **FR-2.12**, and **FR-2.2's span half** — see the table above.
-
-### 1.4 Honest summary
-
-M02 today is **M01's skill extractor pointed at a job description, plus a good
-gap calculation**. The parsing half is real. The half the module is named after
-— allocating a question budget across weighted requirements under a time
-constraint — has not been started.
-
----
-
-## 2. Next
-
-_To fill in._ The spec's §4 functional requirements and §13 acceptance
-gates are the natural first pass — copy them in as a checklist, then mark what
-already exists.
-
----
-
-## 3. Deferred — inter-module
-
-Not gaps in M02. Each needs a module that is not built or not wired yet, and
-each is listed so it is not mistaken for an oversight.
-
-_To fill in._
