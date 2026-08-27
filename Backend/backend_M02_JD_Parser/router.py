@@ -42,6 +42,7 @@ from backend_M02_JD_Parser.archetypes import match as match_archetype
 from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
 from backend_M02_JD_Parser.match import MatchReport, build_match
 from backend_M02_JD_Parser.models import JobDescription
+from backend_M02_JD_Parser.normalise import normalise, too_thin
 from backend_M02_JD_Parser.plan import CoveragePlan, build_plan
 
 from .extract import (
@@ -259,7 +260,29 @@ def parse_jd(
     #  returns is the row the first student's paste made, so a coverage request
     #  against it is the same request either way.
     # ------------------------------------------------------------------
-    digest = content_digest(payload.company_name, payload.role_title, payload.raw_text)
+    # ------------------------------------------------------------------
+    #  Stage 1 (§6.1) — get the job out of the document it arrived in
+    # ------------------------------------------------------------------
+    #  Before this ran, Cognizant's 2027 brochure produced "All rights
+    #  reserved" as its HIGHEST-weighted requirement: the copyright footer
+    #  appears once per page, and §6.4 counts repetition as emphasis, so the
+    #  parser concluded the most important thing the job asks for is a legal
+    #  notice. It did exactly what it was told.
+    #
+    #  Hashed AFTER normalising, so the same posting forwarded twice with
+    #  different mail furniture is one cache entry rather than two.
+    text = normalise(payload.raw_text)
+    if too_thin(payload.raw_text, text):
+        # EC-2.4. Not an error — the upload worked, there is just no job in it.
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "There is not much job description in that once the signatures, footers and "
+                "disclaimers are removed. Paste just the role and requirements section."
+            ),
+        )
+
+    digest = content_digest(payload.company_name, payload.role_title, text)
     cached = session.exec(
         select(JobDescription).where(JobDescription.content_sha256 == digest)
     ).first()
@@ -286,11 +309,11 @@ def parse_jd(
     #
     #  See extract.py.
     # ------------------------------------------------------------------
-    surface_forms = extract_surface_forms(payload.raw_text)
+    surface_forms = extract_surface_forms(text)
 
     # Concepts named in prose rather than enumerated. Ambiguous one-word
     # aliases are excluded there — that is what closes the "solid" hole.
-    prose_hits = scan_prose(payload.raw_text, concepts)
+    prose_hits = scan_prose(text, concepts)
 
     labels: list[str] = []
     seen: set[str] = set()
@@ -375,7 +398,7 @@ def parse_jd(
     #  every addition. `source="archetype"` with `span=None` is the pair that
     #  makes it auditable — a requirement with no span claiming to come from the
     #  JD would be a bug, and a screen can tell them apart without asking.
-    archetype, confidence = match_archetype(payload.role_title, payload.raw_text)
+    archetype, confidence = match_archetype(payload.role_title, text)
     inferred: list[str] = []
     if archetype is not None:
         inferred = backfill_labels(archetype, required)
@@ -396,7 +419,7 @@ def parse_jd(
     # Located against the ORIGINAL text, and folded: "Java or Python" becomes
     # one group over two alternatives rather than three requirements.
     requirement_set = locate(
-        payload.raw_text,
+        text,
         required,
         resolved=concepts_by_label,
         sources=concept_source,
@@ -407,14 +430,14 @@ def parse_jd(
     jd = JobDescription(
         company_name=payload.company_name,
         role_title=payload.role_title,
-        raw_text=payload.raw_text,
+        raw_text=text,
         content_sha256=digest,
         required_skills=required,
         # Located against the ORIGINAL text, so an offset here indexes exactly
         # what the student pasted.
         # A hard filter, never an interview topic (§3.2.2) — so it is stored
         # beside the requirements rather than among them.
-        eligibility=extract_eligibility(payload.raw_text).model_dump(mode="json"),
+        eligibility=extract_eligibility(text).model_dump(mode="json"),
         requirements=[
             requirement.model_dump(mode="json") for requirement in requirement_set.requirements
         ],

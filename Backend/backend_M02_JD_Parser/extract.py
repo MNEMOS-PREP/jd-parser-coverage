@@ -122,6 +122,39 @@ _HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 
+#: A COMPOUND heading: "Languages & Frameworks", "Technologies & Skills",
+#: "Cloud & DevOps", "Additional skills".
+#:
+#: `_HEADING_RE` above wants the heading word to be the whole line, and real
+#: documents write two of them joined. Cognizant's brochure lays its skills out
+#: as a table whose left column reads "Languages & Frameworks" and whose right
+#: column is the actual list — and the parser only ever saw those lists because
+#: the PDF text layer happened to break the heading into "Languages &" and
+#: "Frameworks", the second of which matched by itself.
+#:
+#: Fixing the layout damage (§6.1) removed that accident and took forty real
+#: requirements with it. This is the rule that should have been carrying them.
+#:
+#: Deliberately narrow: a heading word, at most five words total, and NO
+#: sentence-ending punctuation. "Preferred candidates will have a degree" is
+#: seven words and keeps its full stop, so it stays prose — which is the exact
+#: failure `_HEADING_RE`'s separator requirement was written to prevent.
+_HEADING_WORDS = re.compile(
+    r"(?<![\w-])(?:" + "|".join(re.escape(h) for h in _HEADINGS) + r")(?![\w-])",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_a_heading(line: str) -> bool:
+    stripped = line.strip().rstrip(":")
+    if not stripped or stripped.endswith((".", "!", "?")):
+        return False
+    words = stripped.split()
+    if not 1 <= len(words) <= 5:
+        return False
+    return bool(_HEADING_WORDS.search(stripped))
+
+
 #: Commas, semicolons, pipes and bullets separate list items. NOT the forward
 #: slash: "CI/CD" and "TCP/IP" are single names far more often than
 #: "React/Angular" is two, and a wrong split is a fabricated skill.
@@ -152,7 +185,11 @@ _TRAILING_NOISE = re.compile(
     re.IGNORECASE,
 )
 
-_PUNCT_EDGES = re.compile(r"^[\s\-–•·.:;]+|[\s.:;,]+$")
+#: "(GitHub Copilot" and "Claude)" are one parenthetical that a comma split
+#: in half, and "& cloud-native services" is the tail of a joined line. An
+#: unpaired bracket or a leading conjunction is punctuation, not part of a
+#: technology's name.
+_PUNCT_EDGES = re.compile(r"^[\s\-–•·.:;()\[\]&]+|[\s.:;,()\[\]&]+$")
 
 #: Eligibility, not skill. "Must have 2+ years" and "B.Tech with 7.0 CGPA" are
 #: real requirements and they belong in a structured eligibility field - which
@@ -160,7 +197,12 @@ _PUNCT_EDGES = re.compile(r"^[\s\-–•·.:;]+|[\s.:;,]+$")
 #: ontology can never resolve into the "we could not map this" list forever.
 _ELIGIBILITY = re.compile(
     r"\b\d+\s*\+?\s*(?:years?|yrs?|months?)\b|\bcgpa\b|\bb\.?\s?tech\b|"
-    r"\bdegree\b|\bmust\s+have\b|\bminimum\b|\bgraduat\w*\b|\bbatch\s+of\b",
+    r"\bdegrees?\b|\bmust\s+have\b|\bminimum\b|\bgraduat\w*\b|\bbatch\s+of\b|"
+    # "B.E/B. Tech/M.E/M. Tech degrees" splits into fragments like "Tech/M.E/M"
+    # and "Tech degrees", neither of which contains a recognisable degree name —
+    # so both survived as requirements. Note `degrees?`: the plural is what a
+    # brochure writes, and the singular pattern missed every one of them.
+    r"\bm\.?\s?tech\b|\bmca\b|\bbca\b|\barrears?\b",
     re.IGNORECASE,
 )
 
@@ -253,13 +295,37 @@ def _list_lines(text: str) -> list[str]:
     lines = text.splitlines()
     out: list[str] = []
     in_list = False
+    #: Whether anything has actually been collected since the heading opened.
+    #:
+    #: A blank line closes a list, which is right — it is what stops one
+    #: section's items running into the next. But a blank line between a
+    #: HEADING and its first item closes nothing, because nothing has started,
+    #: and a PDF text layer puts one there constantly:
+    #:
+    #:     'Technologies & Skills'
+    #:     ''
+    #:     'Python, Java / .NET, JavaScript / TypeScript, React / Angular'
+    #:
+    #: That cost the entire skills table of a real brochure. The list opened,
+    #: the blank immediately closed it, and the line holding six technologies
+    #: was read as prose.
+    started = False
 
     for line in lines:
         if not line.strip():
-            in_list = False
+            if started:
+                in_list = False
             continue
 
         heading = _HEADING_RE.match(line)
+        if heading is None and _looks_like_a_heading(line):
+            # A compound heading — "Technologies & Skills" — opens a list the
+            # same way a bare "Skills" does. No remainder to split off, because
+            # a compound heading names the section rather than introducing an
+            # inline list.
+            in_list = True
+            started = False
+            continue
         if heading:
             remainder = (heading.group(2) or "").strip()
             if remainder:
@@ -269,6 +335,7 @@ def _list_lines(text: str) -> list[str]:
             else:
                 # "SKILLS" alone - the list is on the lines that follow.
                 in_list = True
+                started = False
             continue
 
         if in_list:
@@ -295,6 +362,7 @@ def _list_lines(text: str) -> list[str]:
             # was already doing the work.
             if _BULLET.match(line) or _DELIMITERS.search(line) or len(line.split()) <= MAX_WORDS:
                 out.append(line)
+                started = True
             else:
                 in_list = False
 
@@ -1051,8 +1119,13 @@ _CGPA = re.compile(
 
 #: "no active backlogs", "zero backlogs", "at most 1 backlog".
 _BACKLOGS = re.compile(
-    r"(?P<none>no|zero|nil)\s+(?:active\s+|current\s+|standing\s+)?backlogs?"
-    r"|(?:at\s+most|maximum|max|up\s+to)\s*(?P<count>\d+)\s*(?:active\s+)?backlogs?",
+    r"(?P<none>no|zero|nil)\s+(?:active\s+|current\s+|standing\s+)?(?:backlog|arrear)s?"
+    r"|(?:at\s+most|maximum|max|up\s+to)\s*(?P<count>\d+)\s*(?:active\s+)?(?:backlog|arrear)s?"
+    # "Students with standing arrears are NOT eligible to apply." The bar is
+    # stated as a disqualification rather than as a limit, which is the usual
+    # phrasing on a campus brochure and matched nothing at all.
+    r"|with\s+(?:standing|active|current|any)\s+(?P<none2>backlog|arrear)s?\s+"
+    r"(?:are\s+)?(?:not|non)[\s-]*eligible",
     re.IGNORECASE,
 )
 
@@ -1060,7 +1133,11 @@ _BACKLOGS = re.compile(
 _BATCH = re.compile(
     r"(?:batch\s+of\s+|year\s+of\s+passing\s*:?\s*|passing\s+out\s+in\s+)?(?P<year>20\d{2})\s*batch"
     r"|batch\s+of\s+(?P<year2>20\d{2})"
-    r"|year\s+of\s+passing\s*:?\s*(?P<year3>20\d{2})",
+    r"|year\s+of\s+passing\s*:?\s*(?P<year3>20\d{2})"
+    # "Students graduating in 2027" is how a brochure writes it, and neither
+    # "batch" nor "year of passing" appears anywhere near it.
+    r"|graduat\w*\s+(?:in|by)\s+(?P<year4>20\d{2})"
+    r"|class\s+of\s+(?P<year5>20\d{2})",
     re.IGNORECASE,
 )
 
@@ -1114,10 +1191,21 @@ _BRANCHES = {
 #: Only read inside a branch-shaped context, never from the whole document.
 #: "IT" and "AI" and "IS" are ordinary English fragments, and scanning a JD for
 #: them produces a branch list off the word "it".
+#: Only read inside a branch-shaped context, or from a run of REAL branch
+#: codes. The original second alternative was any run of capitals joined by
+#: slashes, which on a real brochure matched "CI/CD", "AI/ML" and "LPA / INR" —
+#: producing `allowed_branches: ["AIML"]` on a posting with no branch
+#: restriction at all. That is not noise: it tells a student they are
+#: ineligible for a drive that never excluded them.
+_BRANCH_CODES = "|".join(
+    sorted((re.escape(k) for k in _BRANCHES if len(k) <= 5), key=len, reverse=True)
+)
 _BRANCH_CONTEXT = re.compile(
-    r"(?:branch(?:es)?|discipline|stream|circuit|eligible\s+branch(?:es)?|only\s+for|open\s+to)"
-    r"\s*[:\-]?\s*(?P<list>[A-Za-z&,/ ]{2,120})"
-    r"|(?P<list2>(?:[A-Z]{2,6})(?:\s*[/,]\s*[A-Z]{2,6}){1,6})\s*(?:branch(?:es)?|only|students?)?",
+    r"(?:branch(?:es)?|discipline|stream|circuit|eligibility|eligible|"
+    r"only\s+for|open\s+to|qualification)"
+    r"\s*[:\-]?\s*(?P<list>[A-Za-z&,/ .]{2,120})"
+    r"|(?P<list2>(?:" + _BRANCH_CODES + r")(?:\s*[/,]\s*(?:" + _BRANCH_CODES + r")){1,6})",
+    re.IGNORECASE,
 )
 
 #: "6.5 LPA", "₹6.5 LPA", "CTC 6.5 LPA", "4.5 fixed + 2 variable".
@@ -1264,13 +1352,20 @@ def extract_eligibility(text: str) -> EligibilityCriteria:
 
     match = _BACKLOGS.search(text)
     if match:
-        criteria.max_backlogs_active = 0 if match.group("none") else int(match.group("count"))
+        no_backlogs = match.group("none") or match.group("none2")
+        criteria.max_backlogs_active = 0 if no_backlogs else int(match.group("count"))
         spans.append(_span_at(text, match))
 
     years = {
         int(year)
         for match in _BATCH.finditer(text)
-        for year in (match.group("year"), match.group("year2"), match.group("year3"))
+        for year in (
+            match.group("year"),
+            match.group("year2"),
+            match.group("year3"),
+            match.group("year4"),
+            match.group("year5"),
+        )
         if year
     }
     if years:
