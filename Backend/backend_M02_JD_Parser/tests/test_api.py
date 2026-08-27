@@ -405,8 +405,14 @@ def test_every_requirement_span_resolves_verbatim(client, m04):
     body = _parse_response(client).json()
     raw = body["raw_text"]
 
-    assert body["requirements"], "no requirements to check"
-    for requirement in body["requirements"]:
+    # Only the ones that came from the POSTING. An archetype backfill has
+    # `source="archetype"` and `span=None` on purpose (FR-2.6): nothing in the
+    # document said it, so there is nothing to point at, and asserting a span
+    # on one would be asserting a citation to words nobody wrote.
+    stated = [r for r in body["requirements"] if r["source"] == "jd"]
+
+    assert stated, "no requirements to check"
+    for requirement in stated:
         span = requirement["span"]
         assert span is not None, f"{requirement['text']} was located nowhere"
         assert raw[span["start"] : span["end"]] == span["text"], (
@@ -587,7 +593,10 @@ def test_a_prose_bullet_still_yields_nothing(client, m04):
         ),
     ).json()
 
-    assert body["required_skills"] == []
+    # From the POSTING. The archetype backfills this to eight requirements
+    # because it yielded fewer than five (FR-2.6) — right behaviour, and a
+    # different question from the one this test asks.
+    assert [r for r in body["requirements"] if r["source"] == "jd"] == []
 
 
 def test_a_numbered_list_is_a_list(client, m04):
@@ -1009,7 +1018,10 @@ def test_rescuing_a_requirement_does_not_invent_one(client, m04):
         "- We are looking for someone who thrives in ambiguity and enjoys mentoring juniors\n",
     )
 
-    assert body["required_skills"] == []
+    # From the POSTING. The archetype backfills this to eight requirements
+    # because it yielded fewer than five (FR-2.6) — right behaviour, and a
+    # different question from the one this test asks.
+    assert [r for r in body["requirements"] if r["source"] == "jd"] == []
 
 
 def test_familiarity_describes_depth_not_optionality(client, m04):

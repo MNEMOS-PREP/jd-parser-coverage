@@ -163,8 +163,29 @@ export interface JobDescription {
   concept_source: Record<string, ConceptSource>;
   /** Found in the JD, mapped to no concept. Kept, never dropped. */
   unresolved_skills: string[];
+  /**
+   * §5's `role_archetype`. `null` when nothing matched well enough, or when the
+   * top two were too close to separate — both are answers, and different from
+   * each other.
+   */
+  role_archetype: string | null;
+  /** Recorded even when the match was rejected, because "we looked and were
+   *  not sure" is not the same as "we did not look". */
+  archetype_confidence: number;
+  /** How many requirements came from the archetype rather than the posting. */
+  inferred_count: number;
   scanned_against: ScannedAgainst;
   created_at: string;
+}
+
+/** One entry in §2.3's door-3 role picker. */
+export interface ArchetypeOut {
+  id: string;
+  name: string;
+  /** Shown before the student commits: "just pick a role" is only trustworthy
+   *  if they can see what they are picking. */
+  requirements: string[];
+  default_minutes: number;
 }
 
 /**

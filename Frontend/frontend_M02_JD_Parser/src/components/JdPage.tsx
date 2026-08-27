@@ -84,6 +84,29 @@ export function JdPage() {
         </div>
       </header>
 
+      {/* §6.3: "The UI shows these in a lighter style with a tooltip: 'This
+          wasn't in the JD, but it's standard for this role.' Honesty here
+          costs nothing and buys credibility."
+
+          Said once at the top as well as per row, because the per-row marker
+          answers "why is this here" and only a count answers "how much of what
+          I am reading did the company actually write". */}
+      {data.inferred_count > 0 && (
+        <div className="mb-6 rounded-md border border-line bg-surface-sunken px-4 py-3">
+          <p className="text-sm text-ink-soft">
+            <span className="font-medium text-ink">
+              {data.inferred_count} of these {data.requirements.length}{" "}
+              requirements
+            </span>{" "}
+            {data.inferred_count === 1 ? "was" : "were"} not in the posting. It
+            was short, so we added what is standard for{" "}
+            {data.role_archetype ? "this role" : "the role we matched"} &mdash;
+            marked on each row, and weighted lower than anything the company
+            actually wrote.
+          </p>
+        </div>
+      )}
+
       <EligibilityBanner eligibility={data.eligibility} />
 
       {/* The offer, not the analysis. FR-2.15's sentence — "you have 7.2,
@@ -385,6 +408,14 @@ function RequirementRow({
             title="Repetition is emphasis — a posting that says it three times means it"
           >
             &times;{requirement.mentions}
+          </span>
+        )}
+        {requirement.source === "archetype" && (
+          <span
+            className="provenance ml-2"
+            title="This wasn't in the job description, but it's standard for this role. It counts for less than something the company actually wrote."
+          >
+            standard for this role
           </span>
         )}
         {requirement.measured_by.length === 0 && (

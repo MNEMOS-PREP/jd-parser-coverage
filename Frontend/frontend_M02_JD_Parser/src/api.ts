@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@ai/core";
 import { identityHeaders } from "./components/candidate";
 import type {
+  ArchetypeOut,
   Coverage,
   CoveragePlan,
   Deps,
@@ -35,6 +36,7 @@ export const m02Keys = {
   health: ["m02", "health"] as const,
   status: ["m02", "status"] as const,
   deps: ["m02", "deps"] as const,
+  archetypes: ["m02", "archetypes"] as const,
   jd: (jdId: string) => ["m02", "jd", jdId] as const,
   coverage: (jdId: string, candidateId: string) =>
     ["m02", "coverage", jdId, candidateId] as const,
@@ -213,6 +215,45 @@ export function useUploadJd() {
       }
       return (await res.json()) as JobDescription;
     },
+    onSuccess: (jd) => {
+      qc.setQueryData(m02Keys.jd(jd.id), jd);
+      qc.invalidateQueries({ queryKey: m02Keys.deps });
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Role-only mode (FR-2.14)                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The role picker list.
+ *
+ * `staleTime: Infinity` because the archetype library is a constant compiled
+ * into the backend, not data. Refetching it on window focus would be a request
+ * per tab switch for an answer that cannot have changed.
+ */
+export function useArchetypes() {
+  return useQuery({
+    queryKey: m02Keys.archetypes,
+    staleTime: Infinity,
+    retry: false,
+    queryFn: () => api.get<ArchetypeOut[]>("/v1/archetypes"),
+  });
+}
+
+/**
+ * A requirement set with no job description at all.
+ *
+ * §2.3 calls this door mandatory: *"a student in September with no drive
+ * scheduled still needs to practise. Requiring a JD to use the product would be
+ * a self-inflicted wound."*
+ */
+export function useParseFromRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { archetype_id: string; company_name?: string }) =>
+      api.post<JobDescription>("/v1/jds/from-role", body),
     onSuccess: (jd) => {
       qc.setQueryData(m02Keys.jd(jd.id), jd);
       qc.invalidateQueries({ queryKey: m02Keys.deps });

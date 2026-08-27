@@ -95,7 +95,7 @@ Spec §4. This is the authoritative list; §3 below is only the inter-module hal
 | FR-2.3 | 🟡 | **Landed 2026-08-27.** "Docker or Kubernetes" is one `RequirementGroup` with `satisfaction: any_of` over two requirements, not three. Alternatives share one requirement's weight, and an answered choice is excluded from the gap, the plan and the resume match. A slash splits only when the ontology recognises ≥2 parts — `Java/Python/C++` does, `CI/CD` does not — so with M04 down nothing splits rather than being invented into three. **Missing: `n_of`**, deliberately — no posting seen writes "at least two of". |
 | FR-2.4 | ✅ | **Complete 2026-08-27.** CGPA, active AND history backlogs, batch, bond, `allowed_branches`, `location`, both package figures. `package_lpa_fixed` is separate because a 6.5 LPA headline with 2 LPA variable is a 4.5 LPA salary and students compare the wrong one. The slash IS split for branches and nowhere else. |
 | FR-2.5 | 🟡 | Every requirement carries `concept_ids` and `measurable`, and `concept_source` records whether M04 resolved it or the offline table guessed. **Missing: the offline table holds five concepts**, so with M04 down almost everything is unresolved — honest, and thin. |
-| FR-2.6 | ⬜ | **No role archetype inference.** §6.3 wants a match against an archetype table and a backfill of missing requirements marked `source=archetype`. Blocks FR-2.14 and EC-2.1. |
+| FR-2.6 | ✅ | **Landed 2026-08-27.** A 24-archetype library, matched on title phrases with §6.3's margin check against top-2. Under five requirements, the posting is topped up to eight, each marked `source="archetype"` with `span=None` — the pair that makes the addition auditable. §6.4's `source_w = 0.75` finally has something to apply to. A suggested label that TURNS OUT to be in the document is `jd`, not `archetype`: the archetype found it, the company still said it. Matched deterministically rather than by embedding, and a weak or ambiguous title matches NOTHING |
 | FR-2.7 | 🟡 | Per-requirement gap with `not_measured` as a distinct state, `unmeasurable` as another, and `met_by_alternative` as a third. **Missing: the confidence discount** — §6.5 wants `confidence < 0.25 → not_measured`, and M04 publishes no standard error yet. |
 | FR-2.8 | 🟡 | **Landed 2026-08-27.** §6.5's solver: priority `weight × (1 − mastery)`, a guaranteed question per measurable must-have, the rest by marginal value per minute under `log(1 + q)`, capped at 4. Questions are priced by `measured_by` — 3.5 min verbal, 12 coding, 20 design — and a requirement measured several ways is priced at the dearest. **Missing: `rounds` as a structured list**, and the ILP fallback §6.5 names for infeasible must-have sets (`uncovered` + `suggestion` carry that case today). |
 | FR-2.9 | ✅ | **Landed 2026-08-27.** The must-have floor is seeded before any second question is allocated, in severity order, so a budget that runs out drops the *least* severe must rather than whichever the posting wrote last. Gate: `test_every_measurable_must_have_gets_at_least_one_question`. |
@@ -103,7 +103,7 @@ Spec §4. This is the authoritative list; §3 below is only the inter-module hal
 | FR-2.11 | ⬜ | No live coverage ledger, no post-session report. **Blocked** — needs M05 to write `asked` rows and M13 to move them to `scored`. |
 | FR-2.12 | ✅ | **Landed 2026-08-25.** Normalised (company, role, text) hash, looked up globally — the parse is shared, the gap is per-student. A hit answers 200 rather than 201. |
 | FR-2.13 | ⬜ | No M15 company-brief enrichment. **Blocked** — M15 not wired. |
-| FR-2.14 | ⬜ | **P0. Role-only mode does not exist.** §2.3 calls door 3 mandatory: *"a student in September with no drive scheduled still needs to practise. Requiring a JD to use the product would be a self-inflicted wound."* Depends on FR-2.6. |
+| FR-2.14 | ✅ | **Landed 2026-08-27.** `GET /v1/archetypes` and `POST /v1/jds/from-role`. §2.3's door 3 is real: a student with no drive scheduled picks a role and gets a requirement set and a coverage plan. `raw_text` is EMPTY rather than a synthesised posting — storing a plausible JD would make the read-back quote sentences no company ever published. Cached like a pasted JD, because two students picking "SDE" share one set |
 | FR-2.15 | ✅ | **Landed 2026-08-27.** M02 reads M01. `GET /v1/jds/{id}/match/{candidate}` says *"you have 7.2, cutoff is 7.5"* — and refuses to say it whenever the scales differ: a percentage or a 4-point GPA against a 10-point cutoff is `scale_mismatch`, not a conversion. No grade at all is `unknown`, never `fails`. Identity is forwarded to M01 rather than held as a service token, so M02 can only read resumes its own caller was already allowed to see. |
 | FR-2.16 | ⬜ | **p95 never measured.** §11 budgets ≤ 8 s cold and ≤ 1 s cached. Nothing is timed, so the number is unknown rather than met or missed. |
 
@@ -133,13 +133,13 @@ difference between a demo and a product.
 
 | EC | | |
 |---|---|---|
-| EC-2.1 | ⬜ | 40-word JD → archetype backfill to 8 requirements. Needs FR-2.6. |
+| EC-2.1 | ✅ | 40-word JD → topped up to 8, each marked. Verified on the spec's own example: "Looking for SDE trainees. Good knowledge of DSA and OOPs." went from one requirement to eight, with the one the posting stated weighing 0.180 against 0.117 for the inferred. |
 | EC-2.2 | ⬜ | 3,000-word JD with 40 requirements → display capped at 8 by weight, all stored, plan uses top 12. **Weights exist now, so this is a display cap and a slice** — cheap, and not done. |
 | EC-2.3 | ✅ | "Java/Python/C++" → `RequirementGroup(any_of)`, satisfied if any one is strong. |
 | EC-2.4 | ⬜ | **JD is an email thread.** §6.1 wants a boilerplate stripper built from 50 real campus emails — signatures, "Regards, Placement Cell", forwarded headers, disclaimers — and a prompt for a cleaner paste if < 30 words survive. Nothing strips anything today. Given §1 calls the input "usually a badly formatted blob from a placement-portal email", this is closer to the main path than to an edge case. |
-| EC-2.5 | ⬜ | Non-technical role (HR, Sales) → technical rounds dropped. Needs FR-2.6 archetypes. `measured_by` now makes the second half possible. |
+| EC-2.5 | 🟡 | Non-technical archetypes exist (HR, Sales, Support, Consultant) and their requirement sets are behavioural and aptitude-led, so `measured_by` prices them as verbal rounds. **Missing: an explicit rule that DROPS technical rounds** rather than just not allocating to them. |
 | EC-2.6 | ⬜ | JD in Hindi/Tamil → detect, translate for parsing, keep the original for display. Nothing detects language. |
-| EC-2.7 | ⬜ | Unknown company → archetype-only path, no fabricated company detail. The second half holds by construction (nothing fabricates); the first needs FR-2.6. |
+| EC-2.7 | ✅ | Unknown company → `POST /v1/jds/from-role` with the default `company_name`. Nothing about the company is fabricated, and `raw_text` stays empty. |
 | EC-2.8 | ✅ | Requirement maps to no concept → `measurable=false`, and the UI says "can't be tested here" with a hatched mark rather than a zero score. |
 | EC-2.9 | ⬜ | All requirements already strong → Final Boss difficulty and stretch items. The plan currently allocates normally and says nothing. |
 | EC-2.10 | 🟡 | Zero session history → all gaps `not_measured` and the plan is a broad diagnostic. The state is right; **the copy explaining why is not written**. |
@@ -172,7 +172,7 @@ Spec §2.3.
 
 | Screen | | |
 |---|---|---|
-| 1 — Input, three doors | 🟡 | Door 2 only, now with file upload as well as paste. **Doors 1 and 3 absent, and door 3 is mandatory.** The drive chips — "the highest-value element on this screen" — do not exist. |
+| 1 — Input, three doors | 🟡 | Doors 2 and 3 work: paste, upload, or pick from 24 roles with the requirement set shown before you commit. **Door 1 (company picker) absent**, and the drive chips — "the highest-value element on this screen" — do not exist. |
 | 2 — Requirement read-back | ✅ | Grouped by necessity with each band's share of the total ask, weights, disjunctions rendered as one row, eligibility banner, per-requirement provenance, and the coverage plan beneath it. |
 | 3 — The gap | 🟡 | `CoveragePanel` shows every requirement's state and never renders `not_measured` as a number. **The spec's "your biggest gap: DBMS — specifically normalisation and indexing, you broke on both in your last session" needs M04 evidence links**, which do not exist. |
 | Match — resume vs posting | ✅ | Not in the spec, added 2026-08-27. Confirmation page then analysis: eligibility verdicts first and alone (§3.2.2 — a hard filter, not a topic), then risks ranked with `blocking` reserved for eligibility, then what the resume evidences. |

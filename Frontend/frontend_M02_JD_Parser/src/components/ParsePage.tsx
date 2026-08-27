@@ -27,12 +27,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useParseJd, useUploadJd } from "../api";
+import {
+  useArchetypes,
+  useParseFromRole,
+  useParseJd,
+  useUploadJd,
+} from "../api";
 import {
   Btn,
   ErrorNote,
   Panel,
   Section,
+  SkeletonRows,
   TextArea,
   TextField,
 } from "../ui/primitives";
@@ -49,7 +55,11 @@ export function ParsePage() {
   const navigate = useNavigate();
   const parse = useParseJd();
   const upload = useUploadJd();
+  const archetypes = useArchetypes();
+  const fromRole = useParseFromRole();
   const [dragging, setDragging] = useState(false);
+  const [pickedRole, setPickedRole] = useState<string | null>(null);
+  const picked = archetypes.data?.find((a) => a.id === pickedRole) ?? null;
 
   const [company, setCompany] = useState("");
   const [role, setRole] = useState("");
@@ -222,11 +232,114 @@ export function ParsePage() {
         </Panel>
       </Section>
 
+      {/* Door 3, and the spec calls it mandatory (§2.3): "a student in
+          September with no drive scheduled still needs to practise. Requiring
+          a JD to use the product would be a self-inflicted wound."
+
+          The requirement list is shown BEFORE the student commits, because
+          "just pick a role" is only trustworthy if they can see what they are
+          picking — otherwise it is a button that produces an interview about
+          something unspecified. */}
+      <Section
+        label="Or just pick a role"
+        meta={archetypes.data ? `${archetypes.data.length} roles` : undefined}
+      >
+        <Panel className="p-5">
+          <p className="text-sm text-ink-soft">
+            No posting needed. We use the requirement set that is standard for
+            the role, and every requirement is marked as inferred rather than
+            quoted &mdash; there is no document, so there is nothing to point
+            at.
+          </p>
+
+          {archetypes.isLoading && (
+            <div className="mt-3">
+              <SkeletonRows rows={3} />
+            </div>
+          )}
+          {archetypes.isError && (
+            <div className="mt-3">
+              <ErrorNote>Could not load the role list.</ErrorNote>
+            </div>
+          )}
+
+          {archetypes.data && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {archetypes.data.map((archetype) => (
+                <button
+                  key={archetype.id}
+                  type="button"
+                  onClick={() =>
+                    setPickedRole(
+                      pickedRole === archetype.id ? null : archetype.id,
+                    )
+                  }
+                  className={
+                    pickedRole === archetype.id
+                      ? "rounded-md border border-brand bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand"
+                      : "rounded-md border border-line px-3 py-1.5 text-sm text-ink-soft hover:border-ink-faint hover:text-ink"
+                  }
+                >
+                  {archetype.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {picked && (
+            <div className="mt-4 rounded-md border border-line bg-surface-sunken px-4 py-3">
+              <p className="rule-label">A mock for this covers</p>
+              <p className="mt-1.5 text-sm text-ink">
+                {picked.requirements.join(" · ")}
+              </p>
+              <p className="mt-2 text-xs text-ink-faint">
+                About {picked.default_minutes} minutes. You can change that on
+                the plan.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <Btn
+                  type="button"
+                  variant="primary"
+                  disabled={fromRole.isPending}
+                  onClick={() =>
+                    fromRole.mutate(
+                      {
+                        archetype_id: picked.id,
+                        company_name: company.trim() || "Any company",
+                      },
+                      { onSuccess: (jd) => navigate(`/jds/${jd.id}`) },
+                    )
+                  }
+                >
+                  {fromRole.isPending
+                    ? "Setting it up…"
+                    : `Prepare for ${picked.name}`}
+                </Btn>
+                {company.trim() && (
+                  <span className="text-xs text-ink-faint">
+                    at {company.trim()}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {fromRole.isError && (
+            <div className="mt-3">
+              <ErrorNote>
+                {fromRole.error instanceof Error
+                  ? fromRole.error.message
+                  : "Could not set that up"}
+              </ErrorNote>
+            </div>
+          )}
+        </Panel>
+      </Section>
+
       <Section label="Not built yet">
         <Panel tone="sunken" className="px-4 py-3.5">
           <p className="text-sm text-ink-soft">
-            The spec&rsquo;s input screen has three doors. This is the second
-            one.
+            The spec&rsquo;s input screen has three doors. Two of them work.
           </p>
           <ul className="mt-2 space-y-1.5 text-sm text-ink-soft">
             <li>
@@ -234,17 +347,13 @@ export function ParsePage() {
               &mdash; needs the company + drive-variant table (§3.2). Not built.
             </li>
             <li>
-              <strong className="font-medium text-ink">Just pick a role</strong>{" "}
-              &mdash; needs the role-archetype library and{" "}
-              <code className="provenance">/v1/archetypes</code> (§6.3). Not
-              built, and the spec calls this door mandatory: a student with no
-              drive scheduled cannot use this module at all today.
-            </li>
-            <li>
               <strong className="font-medium text-ink">
                 Campus-drive chips
               </strong>{" "}
-              &mdash; needs the placement-cell calendar. Not built.
+              &mdash; needs the placement-cell calendar. Not built, and §2.3
+              calls it &ldquo;the highest-value element on this screen&rdquo;:
+              the placement cell already publishes the calendar, so pre-loading
+              it would mean most students never type anything at all.
             </li>
           </ul>
           <p className="mt-2.5 text-xs text-ink-faint">

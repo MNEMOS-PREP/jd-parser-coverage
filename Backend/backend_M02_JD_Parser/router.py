@@ -37,6 +37,8 @@ from fastapi import (
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from backend_M02_JD_Parser.archetypes import ARCHETYPES, BY_ID, backfill_labels
+from backend_M02_JD_Parser.archetypes import match as match_archetype
 from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
 from backend_M02_JD_Parser.match import MatchReport, build_match
 from backend_M02_JD_Parser.models import JobDescription
@@ -362,6 +364,35 @@ def parse_jd(
     # to "does this candidate meet the bar" when we cannot test the bar.
     required = [label for label in labels if label in concepts_by_label or label in unresolved]
 
+    # ------------------------------------------------------------------
+    #  FR-2.6 — the 40-word campus JD is the MEDIAN, not the edge case
+    # ------------------------------------------------------------------
+    #  §3.2.1 trap 1. "Looking for SDE trainees. Good knowledge of DSA and
+    #  OOPs." yields two requirements, and a coverage plan over two
+    #  requirements is not a mock interview — it is two questions and a shrug.
+    #
+    #  §6.3's rule: under five, top up to eight from the archetype, and mark
+    #  every addition. `source="archetype"` with `span=None` is the pair that
+    #  makes it auditable — a requirement with no span claiming to come from the
+    #  JD would be a bug, and a screen can tell them apart without asking.
+    archetype, confidence = match_archetype(payload.role_title, payload.raw_text)
+    inferred: list[str] = []
+    if archetype is not None:
+        inferred = backfill_labels(archetype, required)
+        # Resolved like any other label, so a backfilled requirement is
+        # measurable on the same terms as a stated one.
+        if inferred:
+            for label in inferred:
+                guess = resolve_labels([label]).get(label) or FALLBACK_RESOLUTIONS.get(
+                    normalise_alias(label)
+                )
+                if guess:
+                    concepts_by_label[label] = str(guess)
+                    concept_source[label] = (
+                        "m04" if scanned_against == "m04" else "offline_fallback"
+                    )
+            required = [*required, *inferred]
+
     # Located against the ORIGINAL text, and folded: "Java or Python" becomes
     # one group over two alternatives rather than three requirements.
     requirement_set = locate(
@@ -370,6 +401,7 @@ def parse_jd(
         resolved=concepts_by_label,
         sources=concept_source,
         disjunctions=disjunctions,
+        inferred=inferred,
     )
 
     jd = JobDescription(
@@ -391,6 +423,11 @@ def parse_jd(
         concept_source=concept_source,
         unresolved_skills=unresolved,
         scanned_against=scanned_against,
+        role_archetype=archetype.id if archetype else None,
+        archetype_confidence=confidence,
+        # Counted from the RESULT, not from what was suggested: a suggested
+        # label that turned out to be in the document is stated, not inferred.
+        inferred_count=sum(1 for r in requirement_set.requirements if r.source == "archetype"),
     )
     session.add(jd)
     session.commit()
@@ -737,3 +774,136 @@ async def upload_jd(
         response,
         session,
     )
+
+
+class ArchetypeOut(BaseModel):
+    """One entry in §2.3's door-3 role picker."""
+
+    id: str
+    name: str
+    #: What a mock for this role would cover. Shown before the student commits,
+    #: because "just pick a role" is only trustworthy if they can see what they
+    #: are picking — otherwise it is a button that produces an interview about
+    #: something unspecified.
+    requirements: list[str]
+    default_minutes: int
+
+
+@router.get("/archetypes", response_model=list[ArchetypeOut], tags=["meta"])
+def list_archetypes():
+    """§7's `GET /v1/archetypes` — the role picker list (FR-2.14).
+
+    Ordered as the library is written, which is roughly by how many campus
+    drives hire for each. Not alphabetical: a student scanning this wants the
+    common cases first, and "Associate Product Manager" leading the list because
+    of its initial would be a worse screen.
+    """
+    return [
+        ArchetypeOut(
+            id=archetype.id,
+            name=archetype.name,
+            requirements=list(archetype.requirements),
+            default_minutes=archetype.default_minutes,
+        )
+        for archetype in ARCHETYPES
+    ]
+
+
+class RoleOnlyIn(BaseModel):
+    """§2.3 door 3: "just pick a role"."""
+
+    archetype_id: str
+    #: Optional. A student who knows the company can name it and still skip the
+    #: posting — that is a real case in September, when the calendar is out and
+    #: the JDs are not.
+    company_name: str = "Any company"
+
+
+@router.post("/jds/from-role", response_model=JobDescription, status_code=status.HTTP_201_CREATED)
+def parse_from_role(
+    payload: RoleOnlyIn,
+    response: Response,
+    session: Session = Depends(get_db),
+):
+    """A requirement set with no job description at all (FR-2.14).
+
+    §2.3: *"Door 3 ('just pick a role') is mandatory. A student in September
+    with no drive scheduled still needs to practise. Requiring a JD to use the
+    product would be a self-inflicted wound."* It was a self-inflicted wound
+    until now — with no posting there was no way into this module.
+
+    Every requirement here carries `source="archetype"` and `span=None`, which
+    is not a degraded version of a parse: it is an accurate description of where
+    these came from. There is no document, so there is nothing to point at, and
+    §6.4 discounts them to 0.75 exactly as it does a backfill.
+
+    `raw_text` is EMPTY rather than a synthesised posting. Writing a plausible
+    JD and storing it would make the read-back screen quote sentences no company
+    ever published, which is the one thing this module must never do.
+    """
+    archetype = BY_ID.get(payload.archetype_id)
+    if archetype is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No such role. Ask /v1/archetypes for the {len(ARCHETYPES)} we know.",
+        )
+
+    # Cached like a pasted JD, on the same terms: two students picking "SDE"
+    # share one requirement set, because it IS one requirement set.
+    digest = content_digest(payload.company_name, archetype.name, f"archetype:{archetype.id}")
+    cached = session.exec(
+        select(JobDescription).where(JobDescription.content_sha256 == digest)
+    ).first()
+    if cached is not None:
+        response.status_code = status.HTTP_200_OK
+        return cached
+
+    concepts = get_m04_concepts()
+    scanned_against = "m04" if concepts else "offline_lexicon"
+
+    labels = list(archetype.requirements)
+    resolved = resolve_labels(labels)
+    concepts_by_label: dict[str, str] = {}
+    concept_source: dict[str, str] = {}
+    unresolved: list[str] = []
+    for label in labels:
+        concept_id = resolved.get(label) or FALLBACK_RESOLUTIONS.get(normalise_alias(label))
+        if concept_id:
+            concepts_by_label[label] = str(concept_id)
+            concept_source[label] = "m04" if resolved.get(label) else "offline_fallback"
+        else:
+            unresolved.append(label)
+
+    # Located against the empty string, which finds nothing — correctly. Every
+    # requirement comes back with `span=None` and `source="archetype"`.
+    requirement_set = locate(
+        "",
+        labels,
+        resolved=concepts_by_label,
+        sources=concept_source,
+        inferred=labels,
+    )
+
+    jd = JobDescription(
+        company_name=payload.company_name,
+        role_title=archetype.name,
+        raw_text="",
+        content_sha256=digest,
+        required_skills=labels,
+        eligibility={},
+        requirements=[r.model_dump(mode="json") for r in requirement_set.requirements],
+        requirement_groups=[g.model_dump(mode="json") for g in requirement_set.groups],
+        resolved_concepts=concepts_by_label,
+        concept_source=concept_source,
+        unresolved_skills=unresolved,
+        scanned_against=scanned_against,
+        role_archetype=archetype.id,
+        # Chosen, not inferred. A student saying "I am preparing for an SDE
+        # role" is not a match we made and were 0.62 sure of.
+        archetype_confidence=1.0,
+        inferred_count=len(labels),
+    )
+    session.add(jd)
+    session.commit()
+    session.refresh(jd)
+    return jd

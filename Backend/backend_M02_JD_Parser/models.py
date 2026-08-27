@@ -80,6 +80,21 @@ class JobDescription(SQLModel, table=True):
     #: "m04" when the scan ran against the real ontology, "offline_lexicon"
     #: when it ran against the five hardcoded concepts below. The difference
     #: is most of the requirements, so it is recorded, not assumed.
+    #: §5's `RequirementSet.role_archetype` and `archetype_confidence`.
+    #:
+    #: `None` when nothing matched well enough, or when the top two archetypes
+    #: were too close to separate — both of which are answers, and different
+    #: from each other. `archetype_confidence` is recorded either way, because
+    #: "we looked and were not sure" is not the same as "we did not look".
+    role_archetype: str | None = Field(default=None)
+    archetype_confidence: float = Field(default=0.0)
+
+    #: How many requirements came from the archetype rather than the posting
+    #: (§5, `inferred_count`). Kept as a number as well as being derivable from
+    #: `requirements`, because it is what the UI branches on to say "we filled
+    #: some of this in" before it renders a single row.
+    inferred_count: int = Field(default=0)
+
     scanned_against: str = Field(default="offline_lexicon")
 
     created_at: datetime = Field(default_factory=_utcnow)

@@ -825,6 +825,7 @@ def locate(
     resolved: dict[str, str],
     sources: dict[str, str],
     disjunctions: dict[str, list[str]] | None = None,
+    inferred: list[str] | None = None,
 ) -> RequirementSet:
     """Every requirement, with the span it was written at.
 
@@ -846,6 +847,20 @@ def locate(
     # scanning per requirement would find it on one row and leave the rest
     # silent, which reads as disagreement rather than as one statement.
     seniority = seniority_of(text)
+    # §6.3's backfill.
+    #
+    # `source="archetype"` and `span=None` travel together, and the rule that
+    # keeps them together is: a suggested label that TURNS OUT to be in the
+    # document is not inferred. It is stated, and extraction simply failed to
+    # find it — which happens, because `_list_lines` only enters list mode under
+    # one of thirty heading phrases and a posting reading "Looking for SDE
+    # trainees. Good knowledge of DSA and OOPs." has no heading at all.
+    #
+    # Calling that requirement "inferred" would understate what the company
+    # asked for AND discount its weight to 0.75 for a demand they made
+    # explicitly. So the archetype gets credit for finding it and the posting
+    # gets credit for stating it.
+    suggested = {normalise_alias(label) for label in (inferred or [])}
 
     for index, label in enumerate(labels, start=1):
         pattern = requirement_pattern(label)
@@ -872,6 +887,11 @@ def locate(
                     kind=kind_of(label, measured=measured),
                     measured_by=measured,
                     seniority_signal=seniority,
+                    source=(
+                        "archetype"
+                        if normalise_alias(label) in suggested and span is None
+                        else "jd"
+                    ),
                     concept_ids=[concept_id] if concept_id else [],
                     measurable=bool(concept_id),
                     concept_source=sources.get(label),
