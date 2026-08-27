@@ -26,6 +26,9 @@ htmlcov/
 
 # SQLite dev databases
 *.db
+# A dev database rotated out when the schema moved past it. There are no
+# migrations here, so the fix for a stale dev.db is to let it be recreated.
+*.db.*
 
 # Launcher PID and command files
 .run/

@@ -1,9 +1,13 @@
+import json
+import pathlib
 import uuid
 
 import pytest
 from backend_M02_JD_Parser.app import app
 from backend_M02_JD_Parser.router import FALLBACK_CONCEPTS
 from fastapi.testclient import TestClient
+
+_REPO = pathlib.Path(__file__).resolve().parents[3]
 
 
 def test_health(client):
@@ -186,12 +190,31 @@ def test_unknown_jd_is_404(client):
 def test_deps_names_the_missing_module(client):
     """The degradation is reportable, not merely absent.
 
-    Both upstreams are listed, and neither is required. M01 joined on
-    2026-08-27 for FR-2.15: the eligibility comparison needs the student's own
-    CGPA, which lives in M01 and nowhere else.
+    Every upstream is listed and none is required. M01 joined on 2026-08-27 for
+    FR-2.15 — the eligibility comparison needs the student's own CGPA, which
+    lives in M01 and nowhere else — and M15 for FR-2.13.
+
+    The expected set is read from `module.json` rather than written here. This
+    assertion was `{"M04", "M01"}` and its only effect was to fail on the day a
+    third upstream was declared, which is not a bug. The property worth holding
+    is that `/deps` reports exactly what the manifest declares; a literal set
+    tests the manifest's contents instead, and it is the manifest that is
+    allowed to change.
+
+    `required` is still checked against a literal, because THAT is a decision.
+    Rule 2 says a missing dependency narrows scope and never blocks, so a
+    `required: true` appearing here should stop a release rather than be
+    absorbed by a test that reads back whatever it finds.
     """
+    manifest = json.loads((_REPO / "module.json").read_text(encoding="utf-8"))
+    declared = {d["module"] for d in manifest["depends_on"]}
+
     deps = {d["module_id"]: d for d in client.get("/v1/deps").json()}
-    assert set(deps) == {"M04", "M01"}
+    assert set(deps) == declared, "/deps and module.json disagree about the upstreams"
+    assert all(not d["required"] for d in deps.values()), (
+        "an upstream is marked required — Rule 2 says a missing dependency narrows "
+        "scope, never blocks"
+    )
 
     assert deps["M04"]["available"] is False
     assert deps["M04"]["base_url"] == "http://127.0.0.1:8104"

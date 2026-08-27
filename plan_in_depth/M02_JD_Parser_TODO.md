@@ -79,8 +79,10 @@ against the student's own resume from M01.
 archetype. Door 3 is marked *mandatory* in the spec and is FR-2.14, a P0. A
 student in September with no drive scheduled cannot use this module at all.
 
-**Everything downstream of the plan.** FR-2.11's live coverage ledger needs M05
-and M13. The plan is produced and nothing consumes it yet.
+**Everything downstream of the plan.** The ledger exists and is read back —
+`build_plan` re-prioritises against it — but M05 and M13 are the writers and
+neither is built. So the table is correct and empty, and `/sessions/{id}` says
+which module has not arrived rather than looking broken.
 
 ---
 
@@ -100,9 +102,9 @@ Spec §4. This is the authoritative list; §3 below is only the inter-module hal
 | FR-2.8 | ✅ | **Complete 2026-08-27.** §6.5's solver, round pricing from `measured_by`, and §5's `rounds` — one `PlannedRound` per modality, ordered cheapest first so a session warms up rather than opening on 20 minutes of design. `PlannedRound` is declared at §5:252 and never defined, so its fields are chosen here. The ILP fallback is still not built: for an infeasible must-have set there is nothing to optimise, and `uncovered` + `suggestion` carry that case honestly |
 | FR-2.9 | ✅ | **Landed 2026-08-27.** The must-have floor is seeded before any second question is allocated, in severity order, so a budget that runs out drops the *least* severe must rather than whichever the posting wrote last. Gate: `test_every_measurable_must_have_gets_at_least_one_question`. |
 | FR-2.10 | ✅ | **Landed 2026-08-27.** Three corrections a student can make — remove, add, change necessity — stored as their OWN rows keyed by `(candidate_id, jd_id)`. The shared parse is never written to: FR-2.12 caches one parse across sixty students, so a `PATCH` on `jd.requirements` would let any student silently rewrite what fifty-nine others see. Edits re-run `locate`, so weights renormalise rather than being patched, and an added label carries `source="user"` — §5's enum has held that value since the spec was written and nothing had ever produced it |
-| FR-2.11 | ⬜ | No live coverage ledger, no post-session report. **Blocked** — needs M05 to write `asked` rows and M13 to move them to `scored`. |
+| FR-2.11 | ✅ | **Landed 2026-08-27.** `coverage_ledger` is M02's table even though M05 and M13 do the writing — M02 made the promise, so the endpoints are the contract they will be written against rather than a client of theirs. Append-only against §6.6's wording: a row does not "move to scored", a second row is appended and the FURTHEST-THROUGH state wins, because M05 and M13 are separate services whose clocks are not ordered and a late `answered` must not un-score a scored turn. The planner reads it — `build_plan` seeds its counts so a topic already asked twice sees the diminishing return of a third question, and FR-2.9's floor is not re-paid for a must the session already satisfied. `question_budget` is now what is LEFT to ask: a plan is what remains to be done. `/sessions/{id}` renders it live and as the report, because they are the same question at different times. |
 | FR-2.12 | ✅ | **Landed 2026-08-25.** Normalised (company, role, text) hash, looked up globally — the parse is shared, the gap is per-student. A hit answers 200 rather than 201. |
-| FR-2.13 | ⬜ | No M15 company-brief enrichment. **Blocked** — M15 not wired. |
+| FR-2.13 | ✅ | **Landed 2026-08-27.** A JD says what a company WANTS; M15 holds what it ASKED. Three enrichments: alias resolution (§3.2 hard part 5 — M15 owns that table and M02 asks rather than keeping a second one), the drive variant, and a cross-check of the posting's package, bond and locations against the reports. The last is the row that changes a decision — the seeded TCS Digital posting advertises 9.0 LPA and the reports say 7.0. Topics come from the CLAIMS, weighted by `corroboration_count`, because M15 has already decided what a report is worth. `evidence_boost` is a bounded ×0.85–1.25 nudge to §6.4's weights, floored at 8 units of corroborated evidence, and said out loud in the rationale. M15 absent removes the panel and nothing else. |
 | FR-2.14 | ✅ | **Landed 2026-08-27.** `GET /v1/archetypes` and `POST /v1/jds/from-role`. §2.3's door 3 is real: a student with no drive scheduled picks a role and gets a requirement set and a coverage plan. `raw_text` is EMPTY rather than a synthesised posting — storing a plausible JD would make the read-back quote sentences no company ever published. Cached like a pasted JD, because two students picking "SDE" share one set |
 | FR-2.15 | ✅ | **Landed 2026-08-27.** M02 reads M01. `GET /v1/jds/{id}/match/{candidate}` says *"you have 7.2, cutoff is 7.5"* — and refuses to say it whenever the scales differ: a percentage or a 4-point GPA against a 10-point cutoff is `scale_mismatch`, not a conversion. No grade at all is `unknown`, never `fails`. Identity is forwarded to M01 rather than held as a service token, so M02 can only read resumes its own caller was already allowed to see. |
 | FR-2.16 | ✅ | **Landed 2026-08-27.** Every parse records `parse_ms` and a per-stage `stage_ms`, and `GET /v1/performance` reports p95 per stage against §11's budget. Measured over STORED ROWS rather than a benchmark script — a benchmark measures the machine it ran on, and §11's budget is a claim about what a student waits for. Empty until something is parsed, which is the honest answer before there is one |
@@ -184,17 +186,21 @@ Spec §2.3.
 Not gaps in M02. Each needs a module that is not built or not wired yet, and
 each is listed so it is not mistaken for an oversight.
 
-- **FR-2.11 live coverage ledger** — M05 writes `asked`, M13 moves it to
-  `scored`. §6.6 calls this *"the mechanism that makes coverage a guarantee
-  rather than an intention"*, and it is the one part of the module's promise
-  that cannot be kept alone.
-- **FR-2.13 company brief** — M15. §6.7.
+- **The ledger's WRITERS** — M05 writes `asked`, M13 moves it to `scored`.
+  The table, the endpoints and the re-prioritisation are built (FR-2.11); what
+  is missing is anything to put a row in it. §6.6 calls the ledger *"the
+  mechanism that makes coverage a guarantee rather than an intention"*, and
+  that is the half of the promise M02 cannot keep alone.
 - **`Gap.evidence_session_ids` and `closable_hours_estimate`** — M04 publishes a
   mastery scalar and no provenance behind it, so "you broke on both in your last
   session" cannot be said.
-- **FR-2.7's confidence discount** — M04 publishes no standard error, so
-  §6.5's `confidence < 0.25 → not_measured` is approximated by "M04 returned
-  `None`", which is a coarser signal.
+- ~~**FR-2.7's confidence discount**~~ — **this entry was wrong, and it is
+  left here rather than deleted.** It claimed M04 publishes no standard error.
+  M04's `MasteryOut` has carried `se`, `se_effective`, `n_direct` and `stale`
+  since it was written; nobody had called the endpoint. Landed 2026-08-27.
+  Being blocked on an upstream was asserted here for a fortnight without anyone
+  checking the payload, which is worth remembering the next time a line in this
+  section says blocked.
 - **M12/M17 for `measured_by: communication`** — the classification is made and
   nothing consumes it yet.
 

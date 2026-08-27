@@ -27,7 +27,7 @@
       "name": "Skill Graph & MNEMOS Memory",
       "repo": "https://github.com/MNEMOS-PREP/Memory",
       "reason": "the concept ontology to scan a JD against, label resolution, and candidate mastery for the coverage gap",
-      "on_missing": "Your gaps against this JD \u2014 needs M04 Skill Graph. We still read the requirements out of the JD; we just can't say yet which of them you're weak on.",
+      "on_missing": "Your gaps against this JD — needs M04 Skill Graph. We still read the requirements out of the JD; we just can't say yet which of them you're weak on.",
       "base_url": "http://127.0.0.1:8104",
       "health_path": "/health",
       "required": false
@@ -41,11 +41,21 @@
       "base_url": "http://127.0.0.1:8101",
       "health_path": "/health",
       "required": false
+    },
+    {
+      "module": "M15",
+      "name": "Company Guider",
+      "repo": "https://github.com/MNEMOS-PREP/Company_Guider",
+      "reason": "company alias resolution, the drive variant this posting is for, and the topics students report being asked at this company (FR-2.13)",
+      "on_missing": "What this company actually asks - needs M15 Company Guider. We can still read the posting and plan your questions from it; we just can't tell you what students who sat this drive reported, or check the posting's package and bond against them.",
+      "base_url": "http://127.0.0.1:8115",
+      "health_path": "/health",
+      "required": false
     }
   ],
   "_comment_planned": [
-    "Spec \u00a77 and the header also name M01 (resume claims, to weight a",
-    "requirement by what the student has actually done) and M15 (\u00a76.7 company",
+    "Spec §7 and the header also name M01 (resume claims, to weight a",
+    "requirement by what the student has actually done) and M15 (§6.7 company",
     "enrichment - real round structure overriding archetype defaults).",
     "Neither is consumed by this code yet, so neither is declared: a dependency",
     "listed here produces a degradation banner, and a banner for a feature that",

@@ -156,6 +156,72 @@ export interface EligibilityCriteria {
   stated: boolean;
 }
 
+/**
+ * One thing M15 knows about this drive that the posting did not say (FR-2.13).
+ *
+ * `stated` is what the JD said and `observed` is what the reports say. Both are
+ * carried even when they agree — "the posting says 18 months and so do the
+ * reports" is a fact a student has learned, and it is not the same as silence.
+ */
+export interface DriveFact {
+  field: string;
+  stated: string | null;
+  observed: string | null;
+  /** `absent` (the JD is silent), `agrees`, or `differs`. Three states because
+   *  they read completely differently to somebody deciding whether to apply. */
+  relation: string;
+}
+
+/**
+ * What M15 knows about the company this posting is for (FR-2.13).
+ *
+ * A job description says what a company WANTS. M15 holds what it ASKED — the
+ * questions students reported after sitting the drive, the package that was
+ * actually offered, the bond nobody put in the posting. The second kind of fact
+ * is the one a student cannot get anywhere else.
+ *
+ * `null` from the endpoint covers two ordinary cases: M15 is down, or M15 does
+ * not know this company. `/deps` tells them apart and the page already renders
+ * it. A brief WITH `report_count: 0` is the third case — M15 knows the company
+ * and nobody has reported a drive — and that is a page that invites a
+ * submission rather than one that apologises.
+ */
+export interface CompanyBrief {
+  company_id: string;
+  company_name: string;
+  /** Every spelling M15 resolves to this company. Shown, because the posting
+   *  used one of them and the student may only know another. */
+  aliases: string[];
+  report_count: number;
+  drive_variant_id: string | null;
+  drive_variant_name: string | null;
+  /** Why this drive and not another, in words. "TCS NQT" and "TCS Digital" are
+   *  one company and two different interviews. */
+  variant_reason: string;
+  facts: DriveFact[];
+  /** Topic to share of this drive's evidence. Absence is "no report mentions
+   *  it", never "this company does not ask about it". */
+  observed_topics: Record<string, number>;
+  /** How much corroborated evidence produced those shares. Weighted claims,
+   *  not a row count: two students agreeing on one topic is worth more than
+   *  two students naming two. */
+  evidence_weight: number;
+  /** Whether the topics describe this DRIVE or the whole COMPANY: `drive`,
+   *  `company`, or `none`.
+   *
+   *  Two different claims one sentence apart. TCS runs NQT, Digital and Ninja
+   *  and they are three different interviews, so "TCS Digital asks about DBMS"
+   *  and "TCS asks about DBMS" must not be printed with the same words. */
+  topics_scope: string;
+  /** Requirement id to weight multiplier, where M15 had evidence. Empty when
+   *  the reports are too few for the distribution to mean anything. */
+  evidence_boost: Record<string, number>;
+  /** M15's own word: `none`, `thin`, `partial`, `good`. Passed through so this
+   *  page and the company page cannot use different words for one body of
+   *  evidence. */
+  data_sufficiency: string;
+}
+
 export interface JobDescription {
   id: string;
   company_name: string;

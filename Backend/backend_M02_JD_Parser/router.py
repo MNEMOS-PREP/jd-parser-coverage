@@ -43,6 +43,7 @@ from sqlmodel import Session, select
 
 from backend_M02_JD_Parser.archetypes import ARCHETYPES, BY_ID, backfill_labels, candidates
 from backend_M02_JD_Parser.archetypes import match as match_archetype
+from backend_M02_JD_Parser.company import CompanyBrief, build_brief
 from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
 from backend_M02_JD_Parser.edits import ACTIONS, NECESSITY, RequirementEdit, effective
 from backend_M02_JD_Parser.ledger import (
@@ -807,6 +808,27 @@ class PlanIn(BaseModel):
     minutes: int = 45
 
 
+def _evidence_for(jd: JobDescription, candidate_id: str) -> dict[str, float]:
+    """M15's per-requirement nudge, or nothing at all (FR-2.13).
+
+    Nothing at all is the ordinary case and it costs one cached probe: M15 down,
+    M15 does not know the company, or it knows the company and holds too few
+    reported questions for the distribution to mean anything. All three are
+    "plan from the posting alone", which is what M02 did before M15 existed and
+    is a complete answer.
+    """
+    brief = build_brief(
+        dependency_registry(),
+        company_name=jd.company_name or "",
+        role_title=jd.role_title or "",
+        archetype=jd.role_archetype,
+        eligibility=jd.eligibility or {},
+        requirements=jd.requirements or [],
+        candidate_id=candidate_id,
+    )
+    return brief.evidence_boost if brief else {}
+
+
 @router.post("/jds/{jd_id}/plan/{candidate_id}", response_model=CoveragePlan)
 def post_jd_plan(
     jd_id: uuid.UUID,
@@ -845,6 +867,11 @@ def post_jd_plan(
         # EC-2.5. An HR interview does not open a coding round because the JD
         # mentioned SQL in passing.
         archetype=jd.role_archetype,
+        # FR-2.13. What this company is actually reported to ask about, as a
+        # bounded nudge to §6.4's weights. Built from the same function the
+        # brief route serves, so the plan and the panel beside it can never
+        # disagree about which drive this posting is.
+        evidence=_evidence_for(jd, str(candidate_id)),
         # §6.6. A plan rebuilt mid-session must not re-ask what the session has
         # already covered, and the only thing that knows is the ledger.
         already_asked=covered_counts(
@@ -916,6 +943,53 @@ def get_candidate_resume(candidate_id: uuid.UUID) -> tuple[dict | None, str]:
     active = [row for row in rows if row.get("is_active")]
     chosen = (active or rows)[0]
     return chosen, "ok"
+
+
+@router.get("/jds/{jd_id}/company", response_model=CompanyBrief | None)
+def get_jd_company(
+    jd_id: uuid.UUID,
+    candidate_id: uuid.UUID | None = None,
+    session: Session = Depends(get_db),
+):
+    """What M15 knows about the company this posting is for (FR-2.13).
+
+    A JD says what a company WANTS. M15 holds what it ASKED — the questions
+    students reported after sitting the drive, the package that was actually
+    offered, the bond the posting never mentioned. Only the second kind of fact
+    is unavailable anywhere else, which is the whole argument for the call.
+
+    ── Why `null` is a real answer ────────────────────────────────────────────
+
+    `null` covers two cases and the screen distinguishes them by asking `/deps`,
+    which it already renders: M15 is down, or M15 does not know this company.
+    The first is an outage and the second is ordinary — most postings are for
+    companies nobody on this campus has reported yet — and neither is an error,
+    so neither raises.
+
+    A brief that comes back with `report_count: 0` is the third case and it is
+    the interesting one: M15 knows the company and has no reports. That is a
+    page that invites a submission rather than one that apologises.
+
+    ── `candidate_id` is optional here, and gated when present ────────────────
+
+    Optional because the brief is public information: every student on the
+    campus sees the same reported questions. Passing it asks M15 to order those
+    questions against this student's gaps, which is personal, so the parameter
+    goes through `enforce_access` exactly like the routes that require it.
+    """
+    jd = session.get(JobDescription, jd_id)
+    if not jd:
+        raise HTTPException(status_code=404, detail="Job Description not found")
+
+    return build_brief(
+        dependency_registry(),
+        company_name=jd.company_name or "",
+        role_title=jd.role_title or "",
+        archetype=jd.role_archetype,
+        eligibility=jd.eligibility or {},
+        requirements=jd.requirements or [],
+        candidate_id=str(candidate_id) if candidate_id else None,
+    )
 
 
 @router.get("/jds/{jd_id}/match/{candidate_id}", response_model=MatchReport)

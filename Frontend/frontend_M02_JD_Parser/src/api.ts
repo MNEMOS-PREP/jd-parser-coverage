@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@ai/core";
 import { identityHeaders } from "./components/candidate";
 import type {
+  CompanyBrief,
   ArchetypeOut,
   Coverage,
   EffectiveRequirements,
@@ -46,6 +47,8 @@ export const m02Keys = {
   sessionCoverage: (sessionId: string, candidateId: string) =>
     ["m02", "session-coverage", sessionId, candidateId] as const,
   jd: (jdId: string) => ["m02", "jd", jdId] as const,
+  company: (jdId: string, candidateId: string) =>
+    ["m02", "company", jdId, candidateId] as const,
   coverage: (jdId: string, candidateId: string) =>
     ["m02", "coverage", jdId, candidateId] as const,
   // Keyed by minutes too: changing the session length is a different plan, not
@@ -169,6 +172,32 @@ export function usePlan(
  * Never throws on a missing resume. M01 is optional, and the report carries
  * `resume_status` rather than the hook carrying an error.
  */
+/**
+ * What M15 knows about this company (FR-2.13).
+ *
+ * `null` is a real answer and not an error, so this hook must not treat it as
+ * one: M15 down and M15 not knowing the company are both ordinary, and most
+ * postings are for companies nobody on this campus has reported yet.
+ *
+ * `candidateId` is optional to the endpoint and always sent here. It asks M15
+ * to order the reported questions against this student's gaps, which is the
+ * only personalised thing on the panel.
+ */
+export function useCompanyBrief(
+  jdId: string | undefined,
+  candidateId: string | undefined,
+) {
+  return useQuery({
+    queryKey: m02Keys.company(jdId ?? "", candidateId ?? ""),
+    enabled: Boolean(jdId && candidateId),
+    retry: false,
+    queryFn: () =>
+      api.get<CompanyBrief | null>(
+        `/v1/jds/${jdId}/company?candidate_id=${candidateId}`,
+      ),
+  });
+}
+
 export function useMatch(
   jdId: string | undefined,
   candidateId: string | undefined,

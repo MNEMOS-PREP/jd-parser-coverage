@@ -33,6 +33,7 @@ import {
   useResetRequirementEdits,
 } from "../api";
 import { useCandidateId } from "./candidate-hook";
+import { CompanyBriefPanel } from "./CompanyBriefPanel";
 import { CoveragePanel } from "./CoveragePanel";
 import { PlanPanel } from "./PlanPanel";
 import { ScanSourceNote } from "./ConceptSourceChip";
@@ -327,6 +328,12 @@ export function JdPage() {
           {coverage.error instanceof Error ? coverage.error.message : ""}
         </ErrorNote>
       )}
+      {/* FR-2.13. Before the gap, because it is about the JOB and the two
+          panels below it are about the student. A brief that says the posting
+          advertises 6.5 LPA and the reports say 4.2 changes whether the rest
+          of this page is worth reading at all. */}
+      <CompanyBriefPanel jdId={jdId} candidateId={candidateId} />
+
       {coverage.data && <CoveragePanel coverage={coverage.data} />}
 
       {/* The plan goes AFTER the gap, because it is an answer to it. Reading

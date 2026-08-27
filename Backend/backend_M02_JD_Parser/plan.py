@@ -275,7 +275,31 @@ def _marginal_gain(priority: float, questions: int, minutes: float) -> float:
     return (priority * delta) / minutes
 
 
-def _rationale(necessity: str, state: str, questions: int, grounded: bool) -> str:
+def _with_evidence(sentence: str, boost: float) -> str:
+    """FR-2.13's term, said out loud.
+
+    The reason it is exposed rather than folded into the arithmetic: a student
+    looking at four questions on one topic and one on another is owed the
+    reason, and "students who sat this drive report being asked about it" is a
+    better reason than anything the posting's own formatting could give.
+
+    The thresholds are a hair off 1.0 so that floating-point noise on a
+    requirement M15 said nothing decisive about does not produce a claim.
+    """
+    if boost > 1.02:
+        return sentence + " — and this drive is reported to ask about it often"
+    if boost < 0.98:
+        return sentence + " — the reports from this drive rarely mention it"
+    return sentence
+
+
+def _rationale(
+    necessity: str,
+    state: str,
+    questions: int,
+    grounded: bool,
+    boost: float = 1.0,
+) -> str:
     """Why this requirement got this many questions, in words a student can argue with.
 
     `grounded` changes the sentence rather than decorating it. "Never measured"
@@ -287,9 +311,17 @@ def _rationale(necessity: str, state: str, questions: int, grounded: bool) -> st
     if not grounded:
         # M05 generates from the requirement text and the line it was written
         # on. No mastery prior, no adaptive ladder, and a real question.
-        return (
+        #
+        # NOT an early return, which is what it was: the FR-2.13 sentence sat
+        # below this branch and never reached the requirements it matters most
+        # for. An ungrounded requirement is precisely the one M04 can say
+        # nothing about, so "students report being asked about this" is the
+        # only evidence there is — and it was being dropped for having arrived
+        # about a concept the graph does not hold.
+        return _with_evidence(
             f"{necessity}-have, and outside the concept graph "
-            "— the question comes from the posting itself"
+            "— the question comes from the posting itself",
+            boost,
         )
 
     gap = {
@@ -300,12 +332,15 @@ def _rationale(necessity: str, state: str, questions: int, grounded: bool) -> st
     }.get(state, state)
 
     if necessity == "must" and questions == 1:
-        return f"must-have, {gap} — one question is the floor, not the plan"
-    if necessity == "must":
-        return f"must-have and {gap}"
-    if state == "not_measured":
-        return f"the posting asks for it and nothing has measured it ({necessity})"
-    return f"{necessity}-have, {gap}"
+        sentence = f"must-have, {gap} — one question is the floor, not the plan"
+    elif necessity == "must":
+        sentence = f"must-have and {gap}"
+    elif state == "not_measured":
+        sentence = f"the posting asks for it and nothing has measured it ({necessity})"
+    else:
+        sentence = f"{necessity}-have, {gap}"
+
+    return _with_evidence(sentence, boost)
 
 
 def _band(
@@ -362,6 +397,7 @@ def build_plan(
     states: dict[str, str],
     mastery: dict[str, float | None],
     archetype: str | None = None,
+    evidence: dict[str, float] | None = None,
     already_asked: dict[str, int] | None = None,
 ) -> CoveragePlan:
     """Allocate `total_minutes` of interview across the requirements.
@@ -407,6 +443,17 @@ def build_plan(
     }
     cost = {rid: MINUTES_PER_QUESTION[name] for rid, name in rounds.items()}
 
+    # FR-2.13. Each of §6.4's five weighting terms is a proxy for "how much
+    # does this company care about this requirement", read off how the posting
+    # is written. M15 holds the direct measurement — the topics students report
+    # being asked at this company's drives — and it enters the same way the
+    # other five do: as a bounded multiplier.
+    #
+    # Only where M15 had evidence. A requirement it said nothing about keeps
+    # its priority exactly, rather than being marked down for the silence of a
+    # module that may simply have no reports for this drive yet.
+    evidence = evidence or {}
+
     priorities: dict[str, float] = {}
     for requirement in considered:
         label = requirement["text"]
@@ -414,7 +461,7 @@ def build_plan(
             requirement.get("weight", 0.0),
             mastery.get(label),
             states.get(label, "not_measured"),
-        )
+        ) * evidence.get(requirement["id"], 1.0)
 
     # §6.6: *"the planner reads the ledger at each round boundary and
     # re-prioritises remaining budget toward the least-covered high-weight
@@ -507,6 +554,7 @@ def build_plan(
                 states.get(by_id[requirement_id]["text"], "not_measured"),
                 count,
                 bool(by_id[requirement_id].get("grounded")),
+                evidence.get(requirement_id, 1.0),
             ),
             minutes=round((count - asked.get(requirement_id, 0)) * cost[requirement_id], 2),
             already_asked=asked.get(requirement_id, 0),
