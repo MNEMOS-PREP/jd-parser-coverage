@@ -41,6 +41,7 @@ from sqlmodel import Session, select
 from backend_M02_JD_Parser.archetypes import ARCHETYPES, BY_ID, backfill_labels
 from backend_M02_JD_Parser.archetypes import match as match_archetype
 from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
+from backend_M02_JD_Parser.edits import ACTIONS, NECESSITY, RequirementEdit, effective
 from backend_M02_JD_Parser.match import MatchReport, build_match
 from backend_M02_JD_Parser.models import JobDescription
 from backend_M02_JD_Parser.normalise import for_requirements, normalise, too_thin
@@ -1004,3 +1005,186 @@ def parse_from_role(
     session.commit()
     session.refresh(jd)
     return jd
+
+
+# ---------------------------------------------------------------------------
+#  FR-2.10 — the student corrects a parse they do not own
+# ---------------------------------------------------------------------------
+
+
+class RequirementEditIn(BaseModel):
+    """One correction. `value` is only read for `necessity`."""
+
+    action: str
+    target: str
+    value: str = ""
+
+
+def _effective_set(jd: JobDescription, candidate_id: uuid.UUID, session: Session):
+    """This candidate's view of a shared parse, with their edits applied.
+
+    Re-runs `locate` rather than patching the stored rows, so necessity,
+    §6.4's weights, the disjunction grouping and the classification are all
+    RE-DERIVED. Removing a requirement redistributes its weight across the
+    rest, which is what normalisation means and what a hand-adjusted list gets
+    wrong on the very first edit.
+    """
+    edits = list(
+        session.exec(
+            select(RequirementEdit)
+            .where(RequirementEdit.jd_id == jd.id)
+            .where(RequirementEdit.candidate_id == candidate_id)
+        ).all()
+    )
+    stored = jd.requirements or []
+    if not edits:
+        return stored, jd.requirement_groups or [], 0
+
+    labels, overrides, extra_sources = effective([r["text"] for r in stored], edits)
+
+    # Provenance carried across from the original parse, so an edited set still
+    # says which ids came from M04 and which the offline table guessed.
+    concept_source = dict(jd.concept_source or {})
+    concept_source.update(extra_sources)
+
+    inferred = [r["text"] for r in stored if r.get("source") == "archetype"]
+    result = locate(
+        jd.raw_text,
+        labels,
+        resolved=jd.resolved_concepts or {},
+        sources=concept_source,
+        disjunctions=find_disjunctions(labels, jd.resolved_concepts or {}),
+        inferred=[label for label in inferred if label in labels],
+        necessity_overrides=overrides,
+    )
+    requirements = [r.model_dump(mode="json") for r in result.requirements]
+
+    # A label the student ADDED is theirs, and §6.4 discounts anything that is
+    # not `jd` to 0.75 — so their addition counts, and counts slightly less
+    # than what the company actually wrote.
+    added = {" ".join(k.lower().split()) for k, v in extra_sources.items() if v == "user"}
+    for requirement in requirements:
+        if " ".join(requirement["text"].lower().split()) in added:
+            requirement["source"] = "user"
+
+    groups = [g.model_dump(mode="json") for g in result.groups]
+    return requirements, groups, len(edits)
+
+
+@router.get("/jds/{jd_id}/requirements/{candidate_id}")
+def get_effective_requirements(
+    jd_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    session: Session = Depends(get_db),
+):
+    """This student's view of the posting (FR-2.10).
+
+    Candidate-scoped, and that is the whole design. `GET /jds/{id}` returns the
+    SHARED parse — one row, cached by content hash across every student who
+    pasted the same posting (FR-2.12) — and it stays shared. This returns the
+    same parse with one student's corrections laid over it.
+
+    Two students on one drive can disagree about what the posting says, and
+    both are served correctly, because neither ever writes to the other's copy.
+    """
+    jd = session.get(JobDescription, jd_id)
+    if not jd:
+        raise HTTPException(status_code=404, detail="Job Description not found")
+
+    requirements, groups, edit_count = _effective_set(jd, candidate_id, session)
+    return {
+        "jd_id": str(jd_id),
+        "candidate_id": str(candidate_id),
+        "requirements": requirements,
+        "requirement_groups": groups,
+        "edit_count": edit_count,
+    }
+
+
+@router.post("/jds/{jd_id}/requirements/{candidate_id}", status_code=status.HTTP_201_CREATED)
+def edit_requirements(
+    jd_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    payload: RequirementEditIn,
+    session: Session = Depends(get_db),
+):
+    """Record one correction. The shared parse is never written to.
+
+    A `PATCH` on the requirement itself is what §7 sketches, and it would be
+    the wrong verb here: there is nothing of this student's to patch. The
+    posting belongs to the company and the parse is shared sixty ways. What is
+    being created is a correction that belongs to them.
+    """
+    if payload.action not in ACTIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"action must be one of {', '.join(sorted(ACTIONS))}",
+        )
+    if payload.action == NECESSITY and payload.value not in {"must", "should", "could"}:
+        raise HTTPException(
+            status_code=422,
+            detail="necessity must be must, should or could",
+        )
+    if not payload.target.strip():
+        raise HTTPException(status_code=422, detail="target is required")
+
+    jd = session.get(JobDescription, jd_id)
+    if not jd:
+        raise HTTPException(status_code=404, detail="Job Description not found")
+
+    edit = RequirementEdit(
+        candidate_id=candidate_id,
+        jd_id=jd_id,
+        action=payload.action,
+        target=payload.target.strip(),
+        value=payload.value.strip(),
+    )
+    session.add(edit)
+    session.commit()
+
+    requirements, groups, edit_count = _effective_set(jd, candidate_id, session)
+    return {
+        "jd_id": str(jd_id),
+        "candidate_id": str(candidate_id),
+        "requirements": requirements,
+        "requirement_groups": groups,
+        "edit_count": edit_count,
+    }
+
+
+@router.delete("/jds/{jd_id}/requirements/{candidate_id}")
+def reset_requirement_edits(
+    jd_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    session: Session = Depends(get_db),
+):
+    """Throw away this student's corrections and go back to the parse.
+
+    A real button, because the alternative is a student who made three edits
+    and cannot remember which — and an edited list nobody trusts is worse than
+    an unedited one they can argue with.
+    """
+    rows = list(
+        session.exec(
+            select(RequirementEdit)
+            .where(RequirementEdit.jd_id == jd_id)
+            .where(RequirementEdit.candidate_id == candidate_id)
+        ).all()
+    )
+    for row in rows:
+        session.delete(row)
+    session.commit()
+
+    jd = session.get(JobDescription, jd_id)
+    if not jd:
+        raise HTTPException(status_code=404, detail="Job Description not found")
+
+    requirements, groups, edit_count = _effective_set(jd, candidate_id, session)
+    return {
+        "jd_id": str(jd_id),
+        "candidate_id": str(candidate_id),
+        "requirements": requirements,
+        "requirement_groups": groups,
+        "edit_count": edit_count,
+        "removed": len(rows),
+    }

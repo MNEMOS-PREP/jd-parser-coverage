@@ -25,7 +25,13 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { useCoverage, useJd } from "../api";
+import {
+  useCoverage,
+  useEditRequirement,
+  useEffectiveRequirements,
+  useJd,
+  useResetRequirementEdits,
+} from "../api";
 import { useCandidateId } from "./candidate-hook";
 import { CoveragePanel } from "./CoveragePanel";
 import { PlanPanel } from "./PlanPanel";
@@ -40,6 +46,7 @@ import {
 } from "../ui/primitives";
 import type {
   EligibilityCriteria,
+  RequirementEditIn,
   Necessity,
   Requirement,
   RequirementGroup,
@@ -50,6 +57,11 @@ export function JdPage() {
   const candidateId = useCandidateId();
   const jd = useJd(jdId);
   const coverage = useCoverage(jdId, candidateId);
+  // The JD is shared across every student who pasted this posting (FR-2.12).
+  // THIS is the student's own view of it, with their corrections applied.
+  const mine = useEffectiveRequirements(jdId, candidateId);
+  const edit = useEditRequirement(jdId, candidateId);
+  const resetEdits = useResetRequirementEdits(jdId, candidateId);
 
   if (jd.isLoading) return <SkeletonRows rows={6} />;
 
@@ -71,6 +83,12 @@ export function JdPage() {
   }
 
   const data = jd.data;
+  // The student's corrections if they have any, the shared parse otherwise.
+  // Falling back rather than blocking means a slow or failed edits call costs
+  // the correction, not the whole screen.
+  const requirements = mine.data?.requirements ?? data.requirements;
+  const groups = mine.data?.requirement_groups ?? data.requirement_groups;
+  const editCount = mine.data?.edit_count ?? 0;
   const skillCount = data.required_skills.length;
 
   return (
@@ -126,6 +144,30 @@ export function JdPage() {
         </div>
       )}
 
+      {/* Said out loud, because a corrected list that looks like the parse
+          is a list nobody can audit. The reset is a real button: a student who
+          made three edits and cannot remember which is left distrusting the
+          whole screen. */}
+      {editCount > 0 && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-brand-line bg-brand-soft px-4 py-3">
+          <p className="text-sm text-ink">
+            <span className="font-medium">
+              You have corrected this posting {editCount} time
+              {editCount === 1 ? "" : "s"}.
+            </span>{" "}
+            This is your view of it. The posting itself is shared with everyone
+            else preparing for this drive and is unchanged.
+          </p>
+          <button
+            type="button"
+            onClick={() => resetEdits.mutate()}
+            className="shrink-0 text-sm font-medium text-brand hover:text-brand-hover"
+          >
+            {resetEdits.isPending ? "Undoing\u2026" : "Undo my corrections"}
+          </button>
+        </div>
+      )}
+
       <EligibilityBanner eligibility={data.eligibility} />
 
       {/* The offer, not the analysis. FR-2.15's sentence — "you have 7.2,
@@ -166,7 +208,7 @@ export function JdPage() {
         ) : (
           <div className="space-y-4">
             {NECESSITY_ORDER.map((necessity) => {
-              const group = data.requirements.filter(
+              const group = requirements.filter(
                 (r) => r.necessity === necessity,
               );
               if (group.length === 0) return null;
@@ -175,8 +217,9 @@ export function JdPage() {
                   key={necessity}
                   necessity={necessity}
                   requirements={group}
-                  groups={data.requirement_groups}
+                  groups={groups}
                   rawText={data.raw_text}
+                  onEdit={edit.mutate}
                 />
               );
             })}
@@ -369,11 +412,13 @@ function NecessityGroup({
   requirements,
   groups,
   rawText,
+  onEdit,
 }: {
   necessity: Necessity;
   requirements: Requirement[];
   groups: RequirementGroup[];
   rawText: string;
+  onEdit: (body: RequirementEditIn) => void;
 }) {
   const copy = NECESSITY_COPY[necessity];
   const share = requirements.reduce((sum, r) => sum + r.weight, 0);
@@ -413,6 +458,7 @@ function NecessityGroup({
                 key={row.requirement.id}
                 requirement={row.requirement}
                 rawText={rawText}
+                onEdit={onEdit}
               />
             ) : (
               <ChoiceRow
@@ -460,10 +506,12 @@ function RequirementRow({
   requirement,
   rawText,
   compact = false,
+  onEdit,
 }: {
   requirement: Requirement;
   rawText: string;
   compact?: boolean;
+  onEdit?: (body: RequirementEditIn) => void;
 }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
@@ -499,7 +547,45 @@ function RequirementRow({
           </span>
         )}
       </span>
-      <ConceptPill requirement={requirement} />
+      <span className="flex shrink-0 items-center gap-2">
+        {/* FR-2.10. Extraction scores F1 0.857 — about one row in seven is
+            wrong — and until now a student looking at a requirement the
+            posting never made had no way to say so.
+
+            Two controls, not a form. "Not in the posting" and "this is a must"
+            are the two things a student reliably knows better than the parser;
+            a span or a concept id is not, and letting either be typed would
+            turn provenance into an opinion. */}
+        {onEdit && requirement.necessity !== "must" && (
+          <button
+            type="button"
+            title="The posting treats this as more important than we read it"
+            onClick={() =>
+              onEdit({
+                action: "necessity",
+                target: requirement.text,
+                value: "must",
+              })
+            }
+            className="text-xs text-ink-faint hover:text-brand"
+          >
+            must-have
+          </button>
+        )}
+        {onEdit && (
+          <button
+            type="button"
+            title="Remove this from your view of the posting. Nobody else's copy changes."
+            onClick={() =>
+              onEdit({ action: "remove", target: requirement.text })
+            }
+            className="text-xs text-ink-faint hover:text-contested"
+          >
+            not in the posting
+          </button>
+        )}
+        <ConceptPill requirement={requirement} />
+      </span>
     </div>
   );
 }

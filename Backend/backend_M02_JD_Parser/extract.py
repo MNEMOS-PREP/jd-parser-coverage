@@ -1107,6 +1107,7 @@ def locate(
     sources: dict[str, str],
     disjunctions: dict[str, list[str]] | None = None,
     inferred: list[str] | None = None,
+    necessity_overrides: dict[str, str] | None = None,
 ) -> RequirementSet:
     """Every requirement, with the span it was written at.
 
@@ -1128,6 +1129,12 @@ def locate(
     # scanning per requirement would find it on one row and leave the rest
     # silent, which reads as disagreement rather than as one statement.
     seniority = seniority_of(text)
+    # A student's correction to what the posting meant (FR-2.10). Applied HERE
+    # rather than to the finished list, so §6.4's weighting sees the corrected
+    # necessity and renormalises around it — patching a weight afterwards would
+    # leave the set summing to something other than one, and every share on the
+    # screen would be quietly wrong.
+    overrides = {" ".join(k.lower().split()): v for k, v in (necessity_overrides or {}).items()}
     # §6.3's backfill.
     #
     # `source="archetype"` and `span=None` travel together, and the rule that
@@ -1163,7 +1170,10 @@ def locate(
                     id=f"R-{index}",
                     text=label,
                     span=span,
-                    necessity=necessity_at(text, match.start()) if match else "should",
+                    necessity=overrides.get(
+                        " ".join(label.lower().split()),
+                        necessity_at(text, match.start()) if match else "should",
+                    ),
                     mentions=mentions,
                     kind=kind_of(label, measured=measured),
                     measured_by=measured,

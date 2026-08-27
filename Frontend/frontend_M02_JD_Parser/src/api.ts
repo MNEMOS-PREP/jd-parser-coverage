@@ -23,11 +23,13 @@ import { identityHeaders } from "./components/candidate";
 import type {
   ArchetypeOut,
   Coverage,
+  EffectiveRequirements,
   CoveragePlan,
   Deps,
   Health,
   JdParseIn,
   JobDescription,
+  RequirementEditIn,
   MatchReport,
   ModuleStatus,
 } from "./types";
@@ -43,6 +45,8 @@ export const m02Keys = {
   // Keyed by minutes too: changing the session length is a different plan, not
   // a stale one, and caching per length means dragging the control back and
   // forth does not re-ask the server for an answer it already gave.
+  requirements: (jdId: string, candidateId: string) =>
+    ["m02", "requirements", jdId, candidateId] as const,
   match: (jdId: string, candidateId: string) =>
     ["m02", "match", jdId, candidateId] as const,
   plan: (jdId: string, candidateId: string, minutes: number) =>
@@ -257,6 +261,75 @@ export function useParseFromRole() {
     onSuccess: (jd) => {
       qc.setQueryData(m02Keys.jd(jd.id), jd);
       qc.invalidateQueries({ queryKey: m02Keys.deps });
+    },
+  });
+}
+
+/**
+ * This student's view of the posting, with their corrections applied.
+ *
+ * A separate call from `useJd` on purpose. The JD is shared across every
+ * student who pasted the same posting; the corrections are not, and collapsing
+ * the two would mean one student's "that is not in the posting" quietly
+ * deleted a requirement from fifty-nine other people's coverage plans.
+ */
+export function useEffectiveRequirements(
+  jdId: string | undefined,
+  candidateId: string | undefined,
+) {
+  return useQuery({
+    queryKey: m02Keys.requirements(jdId ?? "", candidateId ?? ""),
+    enabled: Boolean(jdId && candidateId),
+    retry: false,
+    queryFn: () =>
+      api.get<EffectiveRequirements>(
+        `/v1/jds/${jdId}/requirements/${candidateId}`,
+      ),
+  });
+}
+
+/** Record one correction. Returns the corrected set, so nothing re-fetches. */
+export function useEditRequirement(
+  jdId: string | undefined,
+  candidateId: string | undefined,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RequirementEditIn) =>
+      api.post<EffectiveRequirements>(
+        `/v1/jds/${jdId}/requirements/${candidateId}`,
+        body,
+      ),
+    onSuccess: (data) => {
+      qc.setQueryData(
+        m02Keys.requirements(jdId ?? "", candidateId ?? ""),
+        data,
+      );
+      // The plan and the gap both allocate over this list, so both are stale.
+      qc.invalidateQueries({ queryKey: ["m02", "plan"] });
+      qc.invalidateQueries({ queryKey: ["m02", "coverage"] });
+    },
+  });
+}
+
+/** Throw the corrections away and go back to the parse. */
+export function useResetRequirementEdits(
+  jdId: string | undefined,
+  candidateId: string | undefined,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.del<EffectiveRequirements>(
+        `/v1/jds/${jdId}/requirements/${candidateId}`,
+      ),
+    onSuccess: (data) => {
+      qc.setQueryData(
+        m02Keys.requirements(jdId ?? "", candidateId ?? ""),
+        data,
+      );
+      qc.invalidateQueries({ queryKey: ["m02", "plan"] });
+      qc.invalidateQueries({ queryKey: ["m02", "coverage"] });
     },
   });
 }

@@ -412,3 +412,34 @@ export interface MatchReport {
   must_have_evidence: number | null;
   risks: Risk[];
 }
+
+/* ------------------------------------------------------------------ */
+/*  The student's corrections (FR-2.10)                               */
+/* ------------------------------------------------------------------ */
+
+/** What a student can know better than the parser. Three things, not a form. */
+export type EditAction = "remove" | "add" | "necessity";
+
+export interface RequirementEditIn {
+  action: EditAction;
+  /** The requirement's LABEL, not its id — ids are positional and move. */
+  target: string;
+  /** Only read for `necessity`. */
+  value?: string;
+}
+
+/**
+ * One student's view of a SHARED parse.
+ *
+ * `GET /jds/{id}` returns the parse itself, cached by content hash across every
+ * student who pasted the same posting (FR-2.12). This is that parse with one
+ * student's corrections laid over it — two students on one drive can disagree
+ * about what the posting says and both be served correctly.
+ */
+export interface EffectiveRequirements {
+  jd_id: string;
+  candidate_id: string;
+  requirements: Requirement[];
+  requirement_groups: RequirementGroup[];
+  edit_count: number;
+}
