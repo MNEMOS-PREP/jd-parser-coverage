@@ -1040,6 +1040,16 @@ def test_familiarity_describes_depth_not_optionality(client, m04):
 # ---------------------------------------------------------------------------
 
 
+UNTESTABLE_JD = """Backend Engineer
+
+Requirements:
+- SQL
+- Kubernetes
+- Terraform
+- GraphQL
+- Rust
+"""
+
 PLAN_DISJUNCTION_JD = """Backend
 
 Requirements:
@@ -1271,3 +1281,31 @@ def test_a_normal_session_is_not_saturated(client, m04_mastery):
     jd_id = _parse_for_plan(client)
 
     assert _plan(client, jd_id, uuid.uuid4(), minutes=30)["saturated"] is False
+
+
+def test_saturation_blames_the_ontology_when_the_ontology_is_the_cause(client, m04_mastery):
+    """ "This posting only has enough in it for 14 minutes" was the wrong sentence.
+
+    Found by running the module with M04 down, which is the common state: four
+    of five requirements resolve to no concept, one is testable, it caps at
+    four questions, and the plan reported that the POSTING was small. It was
+    not — our ontology was missing, and a student reading that would go looking
+    for a longer job description when the fix is upstream of them entirely.
+    """
+    m04_mastery({"measured": []})
+    res = client.post(
+        "/v1/jds/parse",
+        json={
+            "company_name": "Acme",
+            "role_title": "Backend",
+            "raw_text": UNTESTABLE_JD,
+        },
+    )
+    jd_id = res.json()["id"]
+
+    plan = _plan(client, jd_id, uuid.uuid4(), minutes=90)
+
+    assert plan["saturated"] is True
+    assert len(plan["unmeasurable"]) > len(plan["allocations"])
+    assert "can be tested at all" in plan["suggestion"]
+    assert "This posting only has enough" not in plan["suggestion"]

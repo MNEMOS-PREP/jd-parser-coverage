@@ -670,4 +670,5 @@ def get_jd_match(
         resume_status=status,
         eligibility=jd.eligibility or {},
         requirements=jd.requirements or [],
+        groups=jd.requirement_groups or [],
     )

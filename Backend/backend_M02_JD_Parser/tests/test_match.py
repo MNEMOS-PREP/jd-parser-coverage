@@ -348,3 +348,55 @@ def test_the_active_resume_is_the_one_compared(matched, m01):
 
     assert report["resume_id"] == live["id"]
     assert "SQL" in report["evidenced"]
+
+
+def test_a_choice_the_resume_answers_is_not_a_gap(matched, m01):
+    """A posting saying "Python or Java" is met by Python.
+
+    Found by running M01 and M02 against each other with real processes: the
+    report told a student with Python that they were missing Java, off a
+    posting that offered the choice. §3.2.1's "33% qualified" reading, arriving
+    at the resume screen — the same bug the coverage endpoint had, reached by a
+    different route, which is why the group is now consulted in both places.
+    """
+    m01.up([_resume(parsed_skills=["Python"], resolved_concepts={})])
+
+    report = matched("Backend Engineer\n\nRequirements:\n- Strong Python or Java\n- SQL\n")
+
+    assert "Python" in report["evidenced"]
+    assert "Java" not in report["unevidenced"], "an answered choice was reported as a gap"
+    assert report["met_by_alternative"]["Java"] == "Python"
+
+
+def test_an_unanswered_choice_is_still_a_gap(matched, m01):
+    """The group must not become a way to hide a miss.
+
+    A resume mentioning neither alternative has not met the requirement, and
+    exactly one of them carries that so the gap is reported once.
+    """
+    m01.up([_resume(parsed_skills=["COBOL"], resolved_concepts={})])
+
+    report = matched("Backend Engineer\n\nRequirements:\n- Strong Python or Java\n- SQL\n")
+
+    assert report["met_by_alternative"] == {}
+    assert "Python" in report["unevidenced"] and "Java" in report["unevidenced"]
+
+
+def test_alternatives_do_not_inflate_the_denominator(matched, m01):
+    """`must_have_evidence` must not depend on how a company phrased one thing.
+
+    Counting both halves of an answered choice makes a student who meets every
+    requirement score below 100% purely because the posting wrote "or".
+    """
+    m01.up(
+        [
+            _resume(
+                parsed_skills=["Python", "SQL"],
+                resolved_concepts={"SQL": "concept:sql_basics"},
+            )
+        ]
+    )
+
+    report = matched("Backend Engineer\n\nRequirements:\n- Strong Python or Java\n- SQL\n")
+
+    assert report["must_have_evidence"] == 1.0

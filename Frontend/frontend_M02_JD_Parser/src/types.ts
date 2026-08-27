@@ -313,6 +313,13 @@ export interface MatchReport {
   verdicts: Verdict[];
   evidenced: string[];
   unevidenced: string[];
+  /**
+   * label -> the alternative that met the same requirement.
+   *
+   * A posting saying "Python or Java" is met by Python, and listing Java as
+   * missing is §3.2.1's "33% qualified" reading arriving at the resume screen.
+   */
+  met_by_alternative: Record<string, string>;
   /** `null` when the posting states no must-haves — not 0, which reads as
    *  total failure rather than as a question nobody asked. */
   must_have_evidence: number | null;

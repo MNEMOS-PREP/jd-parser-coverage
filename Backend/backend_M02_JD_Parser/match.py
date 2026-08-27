@@ -119,6 +119,10 @@ class MatchReport(BaseModel):
     #: Requirement labels the resume shows evidence for, and those it does not.
     evidenced: list[str] = Field(default_factory=list)
     unevidenced: list[str] = Field(default_factory=list)
+    #: label -> the alternative that met the same requirement. A posting saying
+    #: "Python or Java" is met by Python, and listing Java as missing is
+    #: §3.2.1's "33% qualified" reading arriving at the resume screen.
+    met_by_alternative: dict[str, str] = Field(default_factory=dict)
     #: Fraction of MUST-have requirements the resume evidences. `None` when the
     #: posting states no must-haves — not 0.0, which would read as total
     #: failure rather than as a question nobody asked.
@@ -257,6 +261,7 @@ def build_match(
     resume_status: str,
     eligibility: dict,
     requirements: list[dict],
+    groups: list[dict] | None = None,
 ) -> MatchReport:
     """The resume against the posting.
 
@@ -272,6 +277,8 @@ def build_match(
             resume_status=resume_status,
         )
 
+    groups = groups or []
+    labels_by_id = {r["id"]: r["text"] for r in requirements}
     criteria = EligibilityCriteria(**eligibility) if eligibility else EligibilityCriteria()
     entities = resume.get("entities") or {}
     education = entities.get("education") or []
@@ -314,18 +321,54 @@ def build_match(
         ]
     }
 
+    hits = {
+        requirement["text"]: (
+            bool(
+                {str(concept) for concept in (requirement.get("concept_ids") or [])}
+                & resume_concepts
+            )
+            or _key(requirement["text"]) in resume_labels
+        )
+        for requirement in requirements
+    }
+
+    # A choice the posting offered is met by ONE of its answers (FR-2.3).
+    #
+    # Without this the report tells a student with Python that they are missing
+    # Java, off a posting that said "Python or Java" — §3.2.1's "33% qualified"
+    # reading, reappearing in the one place it does the most damage. It is the
+    # same bug the coverage endpoint had, and it was found the same way: by
+    # running the two modules against each other and reading the output.
+    met_by_alternative: dict[str, str] = {}
+    for group in groups:
+        members = [
+            label
+            for label in (labels_by_id.get(rid) for rid in group.get("requirement_ids", []))
+            if label
+        ]
+        satisfied = next((label for label in members if hits.get(label)), None)
+        if not satisfied:
+            continue
+        for label in members:
+            if label != satisfied:
+                met_by_alternative[label] = satisfied
+
     evidenced: list[str] = []
     unevidenced: list[str] = []
     for requirement in requirements:
-        # An alternative the posting already accepted elsewhere is not
-        # something the resume has to evidence.
-        if requirement.get("group_id") and requirement["text"] in evidenced:
+        label = requirement["text"]
+        if label in met_by_alternative:
             continue
-        ids = {str(concept) for concept in (requirement.get("concept_ids") or [])}
-        hit = bool(ids & resume_concepts) or _key(requirement["text"]) in resume_labels
-        (evidenced if hit else unevidenced).append(requirement["text"])
+        (evidenced if hits[label] else unevidenced).append(label)
 
-    musts = [r for r in requirements if r.get("necessity") == "must"]
+    # Alternatives the posting already accepted are out of the denominator too.
+    # Counting them makes the fraction depend on how many ways a company happened
+    # to phrase one requirement.
+    musts = [
+        r
+        for r in requirements
+        if r.get("necessity") == "must" and r["text"] not in met_by_alternative
+    ]
     must_have_evidence = (
         sum(1 for r in musts if r["text"] in evidenced) / len(musts) if musts else None
     )
@@ -338,6 +381,7 @@ def build_match(
         verdicts=verdicts,
         evidenced=evidenced,
         unevidenced=unevidenced,
+        met_by_alternative=met_by_alternative,
         must_have_evidence=(
             round(must_have_evidence, 3) if must_have_evidence is not None else None
         ),

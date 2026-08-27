@@ -305,11 +305,23 @@ def build_plan(
         )
     elif saturated:
         spent = round(sum(a.minutes for a in allocations))
-        suggestion = (
-            f"This posting only has enough in it for about {spent} minutes. Every requirement "
-            f"is already at its four-question cap, so the extra time in a {total_minutes}-minute "
-            "session would repeat questions rather than cover more ground."
-        )
+        if len(unmeasurable) > len(allocations):
+            # Saturated because most of this posting is UNTESTABLE, not because
+            # the posting is small. Blaming the JD for our own missing ontology
+            # is the wrong sentence: the student would go looking for a longer
+            # posting when the fix is upstream of them entirely.
+            suggestion = (
+                f"Only {len(allocations)} of {len(allocations) + len(unmeasurable)} requirements "
+                "can be tested at all — the rest map to no concept in the ontology, so there is "
+                f"nothing to ask about them. That caps this session at about {spent} minutes "
+                "regardless of how long you set it."
+            )
+        else:
+            suggestion = (
+                f"This posting only has enough in it for about {spent} minutes. Every requirement "
+                f"is already at its four-question cap, so the extra time in a {total_minutes}-minute "
+                "session would repeat questions rather than cover more ground."
+            )
 
     return CoveragePlan(
         jd_id=jd_id,

@@ -255,6 +255,16 @@ export function MatchPage() {
             )}
           </Panel>
         </div>
+        {Object.keys(report.met_by_alternative).length > 0 && (
+          <p className="mt-2 text-xs text-ink-soft">
+            {Object.entries(report.met_by_alternative)
+              .map(([missing, by]) => `${missing} (the posting accepted ${by})`)
+              .join(", ")}{" "}
+            &mdash; not counted either way. The posting offered a choice and
+            your resume answered it, so the alternative you did not take is not
+            a gap.
+          </p>
+        )}
         <p className="mt-2 text-xs text-ink-faint">
           Matched on concept id where both sides resolved, and on the plain
           label otherwise. &ldquo;Not mentioned&rdquo; means your resume does
