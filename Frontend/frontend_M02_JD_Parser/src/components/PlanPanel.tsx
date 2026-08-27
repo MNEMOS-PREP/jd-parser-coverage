@@ -130,6 +130,18 @@ export function PlanPanel({
                         as marks than as a numeral, and it makes the shape of
                         the allocation visible down the column. */}
                     <span className="flex gap-0.5" aria-hidden>
+                      {/* Hollow pips first: what the session already asked.
+                          Same row, because the question a student has is "how
+                          much of this topic is left", and two separate counts
+                          make them do the subtraction. */}
+                      {Array.from({ length: allocation.already_asked }).map(
+                        (_, index) => (
+                          <span
+                            key={`asked-${index}`}
+                            className="h-2.5 w-2.5 rounded-sm border border-brand/50"
+                          />
+                        ),
+                      )}
                       {Array.from({ length: allocation.question_budget }).map(
                         (_, index) => (
                           <span
@@ -140,13 +152,27 @@ export function PlanPanel({
                       )}
                     </span>
                     <span className="provenance">
-                      {allocation.question_budget} Q · {allocation.round_type} ·{" "}
-                      {allocation.minutes} min
+                      {allocation.question_budget} Q
+                      {allocation.already_asked > 0
+                        ? ` · ${allocation.already_asked} asked`
+                        : ""}{" "}
+                      · {allocation.round_type} · {allocation.minutes} min
                     </span>
                   </span>
                 </div>
                 <p className="mt-0.5 text-xs text-ink-faint">
                   {allocation.rationale}
+                  {/* Not a warning. A generated question is a real question —
+                      it just cannot climb a difficulty ladder, because there
+                      is no concept behind it to be measured against. Saying so
+                      is the difference between a practice round a student can
+                      calibrate and one they cannot. */}
+                  {!allocation.grounded && (
+                    <span className="text-ink-faint">
+                      {" "}
+                      · written from the posting, so it will not adapt
+                    </span>
+                  )}
                 </p>
               </div>
             ))}

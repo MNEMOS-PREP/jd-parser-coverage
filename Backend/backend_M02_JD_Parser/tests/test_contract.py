@@ -30,13 +30,15 @@ by a hook that names an endpoint in a comment.
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import pathlib
+import pkgutil
 import re
 
 import pytest
 from backend_M02_JD_Parser.app import app
-from backend_M02_JD_Parser.extract import Requirement
-from backend_M02_JD_Parser.models import JobDescription
+from pydantic import BaseModel
 
 _REPO = pathlib.Path(__file__).resolve().parents[3]
 _FRONTEND = _REPO / "Frontend" / "frontend_M02_JD_Parser" / "src"
@@ -74,6 +76,64 @@ def _all_components() -> str:
         for path in _FRONTEND.rglob("*.ts*")
         if path.name != "api.ts"
     )
+
+
+def _backend_models() -> dict[str, type[BaseModel]]:
+    """Every Pydantic model this module defines, found by walking the package.
+
+    Imported by discovery rather than by a list of module names, because a list
+    of module names is the same mistake one level up: `ledger.py` and `match.py`
+    both arrived after this file did, and a hand-written list would have skipped
+    them in silence.
+    """
+    import backend_M02_JD_Parser as package
+
+    found: dict[str, type[BaseModel]] = {}
+    for info in pkgutil.iter_modules(package.__path__):
+        module = importlib.import_module(f"{package.__name__}.{info.name}")
+        for obj in vars(module).values():
+            if (
+                inspect.isclass(obj)
+                and issubclass(obj, BaseModel)
+                and obj.__module__.startswith(package.__name__)
+            ):
+                found.setdefault(obj.__name__, obj)
+    return found
+
+
+def _interfaces() -> dict[str, str]:
+    """Every `export interface` in `types.ts`, name to body."""
+    return dict(re.findall(r"export interface (\w+) \{(.*?)\n\}", _source("types.ts"), re.DOTALL))
+
+
+def _serialised_by(model: type[BaseModel]) -> set[str]:
+    """Everything the model actually puts on the wire.
+
+    `model_fields` is not that set. `Requirement.testable` and
+    `EligibilityCriteria.stated` are `computed_field`s — derived on
+    serialisation, present in every response, and invisible to `model_fields`.
+    Reading only the declared fields would have reported the frontend as
+    inventing two fields the backend sends on every parse.
+    """
+    return set(model.model_fields) | set(model.model_computed_fields)
+
+
+def _declared_in(body: str) -> set[str]:
+    """Field names an interface body declares, optional or not."""
+    return set(re.findall(r"^\s{2}([a-z_0-9]+)\??:", body, re.MULTILINE))
+
+
+def _model_interface_pairs() -> dict[str, tuple[type[BaseModel], str]]:
+    """Backend models that share a name with a frontend interface.
+
+    A shared name is the intent: somebody wrote `export interface MatchReport`
+    because `MatchReport` crosses the wire. Models with no interface are not
+    failures — `RequirementEdit` is a table, `JdParseIn` is a request — but
+    once an interface exists the two halves must agree in full.
+    """
+    models = _backend_models()
+    interfaces = _interfaces()
+    return {name: (models[name], interfaces[name]) for name in models.keys() & interfaces.keys()}
 
 
 def _client_exists_for(path: str, api: str) -> bool:
@@ -160,54 +220,76 @@ def test_every_field_the_backend_returns_is_declared_on_the_frontend():
     the backend grows a field, the response carries it, and no frontend type
     mentions it — so nothing renders it and the tests are all green.
 
-    That is not hypothetical either. `requirement_groups` landed on 2026-08-27
-    and would have been invisible: the parse folds "Docker or Kubernetes" into
-    one choice, stores the group, returns it, and the screen goes on drawing
-    two separate demands — the exact §3.2.1 mistake, fixed in the parser and
+    That is not hypothetical. `requirement_groups` landed on 2026-08-27 and
+    would have been invisible: the parse folds "Docker or Kubernetes" into one
+    choice, stores the group, returns it, and the screen goes on drawing two
+    separate demands — the exact §3.2.1 mistake, fixed in the parser and
     reintroduced by the renderer.
+
+    ── Why the pairs are discovered rather than listed ─────────────────────────
+
+    This gate used to name two models, `JobDescription` and `Requirement`,
+    because those were the two that had drifted. Which made it a check that
+    could only catch the bug it was written for: `CoveragePlan`, `MatchReport`,
+    `Risk`, `Verdict` and `PlannedRound` all arrived afterwards and none was
+    looked at, and `CoverageAllocation.grounded` sat unreachable by any screen
+    with the whole suite green.
+
+    So the set is derived. Every Pydantic model this module defines that shares
+    a name with an interface in `types.ts` is a pair somebody intended, and the
+    two halves have to agree. A model with no interface is not a failure — not
+    everything the backend defines is meant to cross the wire — but the moment
+    one exists, it is held to the whole model.
 
     Declared, not necessarily rendered. A type is where a field becomes
     reachable, and a field nobody typed is one nobody can reach.
     """
-    declared = set(JobDescription.model_fields)
-    interface = re.search(
-        r"export interface JobDescription \{(.*?)\n\}",
-        _source("types.ts"),
-        re.DOTALL,
+    pairs = _model_interface_pairs()
+    assert len(pairs) >= 10, (
+        f"only {len(pairs)} model/interface pairs discovered — types.ts or the "
+        "package layout changed and this gate now checks almost nothing"
     )
-    assert interface, "no JobDescription interface in types.ts — the file layout changed"
 
-    typed = set(re.findall(r"^\s{2}([a-z_0-9]+)\??:", interface.group(1), re.MULTILINE))
-    missing = sorted(declared - typed)
+    drift: list[str] = []
+    for name, (model, body) in sorted(pairs.items()):
+        missing = sorted(_serialised_by(model) - _declared_in(body))
+        if missing:
+            drift.append(f"  {name}: {', '.join(missing)}")
 
-    assert not missing, (
-        "backend fields absent from the frontend's JobDescription:\n  "
-        + "\n  ".join(missing)
-        + "\nAdd them to types.ts, or the screen cannot reach what the parse found."
+    assert not drift, (
+        "backend fields absent from the matching frontend interface:"
+        + "\n"
+        + "\n".join(drift)
+        + "\nAdd them to types.ts, or the screen cannot reach what the backend found."
     )
 
 
 @pytest.mark.gate
-def test_every_requirement_field_is_declared_too():
-    """The same check one level down, where the interesting fields live.
+def test_the_frontend_does_not_invent_fields_the_backend_never_sends():
+    """The same drift running the other way, and it fails later and worse.
 
-    `necessity`, `weight` and `group_id` are all on the requirement rather than
-    on the JD, and they are what the coverage plan will allocate on. A screen
-    that silently does not know about `necessity` renders a flat list and looks
-    completely fine doing it.
+    An interface declaring `confidence_label` the backend does not send
+    compiles perfectly, renders `undefined`, and is discovered by a student
+    looking at a blank cell. TypeScript cannot catch it: the value arrives as
+    JSON and the interface is an assertion ABOUT that JSON, not a check of it.
+
+    Optional fields are exempt. `name?:` is the declared way to say "may be
+    absent", and the client legitimately builds partial objects while a request
+    is in flight.
     """
-    declared = set(Requirement.model_fields)
-    interface = re.search(
-        r"export interface Requirement \{(.*?)\n\}",
-        _source("types.ts"),
-        re.DOTALL,
+    invented: list[str] = []
+    for name, (model, body) in sorted(_model_interface_pairs().items()):
+        required = set(re.findall(r"^\s{2}([a-z_0-9]+):", body, re.MULTILINE))
+        extra = sorted(required - _serialised_by(model))
+        if extra:
+            invented.append(f"  {name}: {', '.join(extra)}")
+
+    assert not invented, (
+        "frontend interfaces declaring fields no backend model has:"
+        + "\n"
+        + "\n".join(invented)
+        + "\nThese render as undefined. Mark them optional or delete them."
     )
-    assert interface, "no Requirement interface in types.ts"
-
-    typed = set(re.findall(r"^\s{2}([a-z_0-9]+)\??:", interface.group(1), re.MULTILINE))
-    missing = sorted(declared - typed)
-
-    assert not missing, "Requirement fields absent from types.ts:\n  " + "\n  ".join(missing)
 
 
 # ---------------------------------------------------------------------------

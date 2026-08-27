@@ -332,9 +332,27 @@ export interface JdParseIn {
 export interface CoverageAllocation {
   requirement_id: string;
   requirement_text: string;
+  /** Questions still to ASK, not questions the requirement is worth.
+   *
+   *  Once a session is under way the ledger says some were already put to the
+   *  student, and this is what is left. A plan is what remains to be done; "3
+   *  questions" shown to somebody who has answered two of them is the plan
+   *  describing the past. */
   question_budget: number;
-  /** Always "verbal" today — `measured_by` does not exist, so nothing can say
-   *  a requirement needs a coding or design round. */
+  /** False when the question has to be GENERATED from the requirement text
+   *  rather than drawn from M04's concept graph.
+   *
+   *  Both are real questions and only one can adapt: a grounded question comes
+   *  with a mastery prior, prerequisites and a difficulty ladder, and a
+   *  generated one comes with the requirement and the line it was written on.
+   *  Worth saying on the screen, because it changes what the practice is. */
+  grounded: boolean;
+  /** How many the session already covered (FR-2.11). Zero before an interview
+   *  starts, which is the ordinary case and reads as absent. */
+  already_asked: number;
+  /** Which room this is asked in — `verbal`, `coding` or `design`, decided by
+   *  the requirement's `measured_by`. Non-technical archetypes never open a
+   *  coding round (EC-2.5). */
   round_type: string;
   /** `weight × (1 − mastery)`, discounted when we are guessing. */
   priority: number;
@@ -495,4 +513,44 @@ export interface StagePerf {
   within_budget: boolean;
   /** Rows behind the number. A p95 over three parses is not a p95. */
   samples: number;
+}
+
+/* ------------------------------------------------------------------ */
+/*  The live coverage ledger (FR-2.11, §6.6)                          */
+/* ------------------------------------------------------------------ */
+
+/** §5's five states, in the order a turn passes through them. */
+export type LedgerState =
+  "planned" | "asked" | "answered" | "scored" | "skipped";
+
+export interface LedgerEventIn {
+  jd_id: string;
+  requirement_id: string;
+  state: LedgerState;
+  turn_id?: string;
+  score?: number;
+}
+
+/**
+ * What a session actually covered, against what it promised.
+ *
+ * Live during the interview and the post-session report afterwards — the same
+ * view, because they are the same question asked at different times, and two
+ * views would eventually disagree.
+ */
+export interface SessionCoverage {
+  session_id: string;
+  candidate_id: string;
+  jd_id: string | null;
+  asked: Record<string, number>;
+  scores: Record<string, number[]>;
+  requirements: {
+    requirement_id: string;
+    text: string;
+    necessity: string | null;
+    weight: number | null;
+    asked: number;
+    scores: number[];
+  }[];
+  questions_asked: number;
 }

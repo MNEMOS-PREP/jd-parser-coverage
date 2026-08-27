@@ -12,6 +12,7 @@ import { DepsPage } from "./components/DepsPage";
 import { JdPage } from "./components/JdPage";
 import { MatchConfirmPage } from "./components/MatchConfirmPage";
 import { MatchPage } from "./components/MatchPage";
+import { SessionCoveragePage } from "./components/SessionCoveragePage";
 import { ParsePage } from "./components/ParsePage";
 
 export const m02Routes = (
@@ -24,6 +25,9 @@ export const m02Routes = (
         the right sentence at a moment nobody asked for it. */}
     <Route path="/jds/:jdId/compare" element={<MatchConfirmPage />} />
     <Route path="/jds/:jdId/match" element={<MatchPage />} />
+    {/* FR-2.11. Written by M05 as it asks and M13 as it scores; read here.
+        M02 owns the table because M02 made the promise. */}
+    <Route path="/sessions/:sessionId" element={<SessionCoveragePage />} />
     <Route path="/deps" element={<DepsPage />} />
   </Route>
 );

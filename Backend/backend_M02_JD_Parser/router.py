@@ -45,6 +45,14 @@ from backend_M02_JD_Parser.archetypes import ARCHETYPES, BY_ID, backfill_labels,
 from backend_M02_JD_Parser.archetypes import match as match_archetype
 from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
 from backend_M02_JD_Parser.edits import ACTIONS, NECESSITY, RequirementEdit, effective
+from backend_M02_JD_Parser.ledger import (
+    PLANNED,
+    SCORED,
+    STATES,
+    CoverageLedger,
+    covered_counts,
+    scores_by_requirement,
+)
 from backend_M02_JD_Parser.match import MatchReport, build_match
 from backend_M02_JD_Parser.models import JobDescription
 from backend_M02_JD_Parser.normalise import for_requirements, normalise, too_thin
@@ -837,6 +845,17 @@ def post_jd_plan(
         # EC-2.5. An HR interview does not open a coding round because the JD
         # mentioned SQL in passing.
         archetype=jd.role_archetype,
+        # §6.6. A plan rebuilt mid-session must not re-ask what the session has
+        # already covered, and the only thing that knows is the ledger.
+        already_asked=covered_counts(
+            list(
+                session.exec(
+                    select(CoverageLedger)
+                    .where(CoverageLedger.jd_id == jd_id)
+                    .where(CoverageLedger.candidate_id == candidate_id)
+                ).all()
+            )
+        ),
     )
 
 
@@ -1377,3 +1396,150 @@ def performance(session: Session = Depends(get_db)):
             )
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+#  FR-2.11 / §6.6 — the live coverage ledger
+# ---------------------------------------------------------------------------
+
+
+class LedgerEventIn(BaseModel):
+    """One turn's progress, written by M05 or M13.
+
+    `turn_id` is optional only for `planned`. Every other state is about a
+    question that exists, and a `scored` row with no turn cannot be disputed
+    later — which is the one thing a ledger is for.
+    """
+
+    jd_id: uuid.UUID
+    requirement_id: str
+    state: str
+    turn_id: uuid.UUID | None = None
+    score: float | None = None
+
+
+@router.post(
+    "/sessions/{session_id}/coverage/{candidate_id}",
+    status_code=status.HTTP_201_CREATED,
+)
+def record_coverage(
+    session_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    payload: LedgerEventIn,
+    session: Session = Depends(get_db),
+):
+    """Record that a requirement was asked about, answered, scored or skipped.
+
+    §6.6: *"When M5 selects a question, it writes `coverage_ledger(...,
+    state='asked')`. When M13 scores that turn, the row moves to `scored`."*
+
+    M02 owns this table although M05 and M13 do the writing, because M02 made
+    the promise: the plan is its output, the requirement ids are its ids, and
+    the weights the re-prioritisation reads are its weights. Which means the
+    endpoint has to exist BEFORE either writer does — this is the contract they
+    are written against, not a client of theirs.
+
+    Candidate-scoped, so `enforce_access` gates it without being asked to and
+    no new authentication mechanism appears. `ai_core.identity` has four roles
+    and the list is closed on purpose; M05 forwards the student's identity
+    exactly as M02 forwards it to M01.
+    """
+    if payload.state not in STATES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"state must be one of {', '.join(STATES)}",
+        )
+    if payload.state != PLANNED and payload.turn_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"turn_id is required for state {payload.state!r} — a row about a question "
+            "that does not exist cannot be disputed later, which is what a ledger is for",
+        )
+    if payload.score is not None and payload.state != SCORED:
+        raise HTTPException(
+            status_code=422,
+            detail="score belongs only on a `scored` row",
+        )
+
+    if not session.get(JobDescription, payload.jd_id):
+        raise HTTPException(status_code=404, detail="Job Description not found")
+
+    # Appended, never updated. An interview is evidence, and evidence that can
+    # be overwritten is evidence somebody can quietly revise — "asked 14:02,
+    # answered 14:04, scored 0.3 at 14:09" is the sequence a dispute needs.
+    event = CoverageLedger(
+        session_id=session_id,
+        candidate_id=candidate_id,
+        jd_id=payload.jd_id,
+        requirement_id=payload.requirement_id,
+        turn_id=payload.turn_id,
+        state=payload.state,
+        score=payload.score,
+    )
+    session.add(event)
+    session.commit()
+    session.refresh(event)
+    return {"id": str(event.id), "state": event.state, "recorded_at": event.updated_at}
+
+
+@router.get("/sessions/{session_id}/coverage/{candidate_id}")
+def session_coverage(
+    session_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    session: Session = Depends(get_db),
+):
+    """What this session has actually covered, against what it promised.
+
+    Live during the interview and the post-session report afterwards — the same
+    view, because they are the same question asked at different times, and
+    building two would let them disagree.
+
+    §6.6 calls the ledger *"the mechanism that makes coverage a guarantee
+    rather than an intention"*, and this is where the guarantee becomes
+    checkable: `promised` comes from the plan, `asked` comes from the ledger,
+    and `uncovered` is the difference nobody could see before.
+    """
+    rows = list(
+        session.exec(
+            select(CoverageLedger)
+            .where(CoverageLedger.session_id == session_id)
+            .where(CoverageLedger.candidate_id == candidate_id)
+        ).all()
+    )
+    if not rows:
+        return {
+            "session_id": str(session_id),
+            "candidate_id": str(candidate_id),
+            "jd_id": None,
+            "asked": {},
+            "scores": {},
+            "requirements": [],
+            "questions_asked": 0,
+        }
+
+    jd_id = rows[0].jd_id
+    jd = session.get(JobDescription, jd_id)
+    asked = covered_counts(rows)
+    scores = scores_by_requirement(rows)
+
+    by_id = {r["id"]: r for r in (jd.requirements if jd else []) or []}
+    requirements = [
+        {
+            "requirement_id": rid,
+            "text": by_id.get(rid, {}).get("text", rid),
+            "necessity": by_id.get(rid, {}).get("necessity"),
+            "weight": by_id.get(rid, {}).get("weight"),
+            "asked": asked.get(rid, 0),
+            "scores": scores.get(rid, []),
+        }
+        for rid in sorted(set(asked) | set(scores))
+    ]
+    return {
+        "session_id": str(session_id),
+        "candidate_id": str(candidate_id),
+        "jd_id": str(jd_id),
+        "asked": asked,
+        "scores": scores,
+        "requirements": requirements,
+        "questions_asked": sum(asked.values()),
+    }

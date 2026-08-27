@@ -29,9 +29,11 @@ import type {
   Health,
   JdParseIn,
   JobDescription,
+  LedgerEventIn,
   RequirementEditIn,
   MatchReport,
   ModuleStatus,
+  SessionCoverage,
   StagePerf,
 } from "./types";
 
@@ -41,6 +43,8 @@ export const m02Keys = {
   deps: ["m02", "deps"] as const,
   archetypes: ["m02", "archetypes"] as const,
   performance: ["m02", "performance"] as const,
+  sessionCoverage: (sessionId: string, candidateId: string) =>
+    ["m02", "session-coverage", sessionId, candidateId] as const,
   jd: (jdId: string) => ["m02", "jd", jdId] as const,
   coverage: (jdId: string, candidateId: string) =>
     ["m02", "coverage", jdId, candidateId] as const,
@@ -347,5 +351,53 @@ export function usePerformance() {
     queryKey: m02Keys.performance,
     retry: false,
     queryFn: () => api.get<StagePerf[]>("/v1/performance"),
+  });
+}
+
+/**
+ * What a session actually covered (FR-2.11, §6.6).
+ *
+ * §6.6 calls the ledger "the mechanism that makes coverage a guarantee rather
+ * than an intention" — this is where the guarantee becomes checkable, because
+ * `asked` comes from the ledger and the plan's promise comes from elsewhere.
+ */
+export function useSessionCoverage(
+  sessionId: string | undefined,
+  candidateId: string | undefined,
+) {
+  return useQuery({
+    queryKey: m02Keys.sessionCoverage(sessionId ?? "", candidateId ?? ""),
+    enabled: Boolean(sessionId && candidateId),
+    retry: false,
+    queryFn: () =>
+      api.get<SessionCoverage>(
+        `/v1/sessions/${sessionId}/coverage/${candidateId}`,
+      ),
+  });
+}
+
+/**
+ * Record a turn's progress. Written by M05 and M13, not by this frontend.
+ *
+ * The hook exists because M02 owns the endpoint and the contract gate requires
+ * every route to have a client — and because the session screen will need to
+ * replay a turn when M06 lands.
+ */
+export function useRecordCoverage(
+  sessionId: string | undefined,
+  candidateId: string | undefined,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LedgerEventIn) =>
+      api.post<{ id: string; state: string }>(
+        `/v1/sessions/${sessionId}/coverage/${candidateId}`,
+        body,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["m02", "session-coverage"] });
+      // A plan rebuilt after a turn must not re-ask what was just asked.
+      qc.invalidateQueries({ queryKey: ["m02", "plan"] });
+    },
   });
 }

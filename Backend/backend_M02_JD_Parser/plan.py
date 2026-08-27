@@ -134,6 +134,11 @@ class CoverageAllocation(BaseModel):
     #: The label, so a caller can render the plan without re-joining it against
     #: the requirement list.
     requirement_text: str
+    #: How many questions the SESSION has already put to the student about this
+    #: (§6.6). Non-zero only when the plan was rebuilt mid-interview from the
+    #: ledger, and worth carrying because "2 of 4 done" is a different sentence
+    #: from "4 questions planned".
+    already_asked: int = 0
     #: False when M05 must GENERATE a question from the requirement text rather
     #: than draw one from M04's concept graph.
     #:
@@ -357,6 +362,7 @@ def build_plan(
     states: dict[str, str],
     mastery: dict[str, float | None],
     archetype: str | None = None,
+    already_asked: dict[str, int] | None = None,
 ) -> CoveragePlan:
     """Allocate `total_minutes` of interview across the requirements.
 
@@ -410,7 +416,20 @@ def build_plan(
             states.get(label, "not_measured"),
         )
 
-    questions: dict[str, int] = {requirement["id"]: 0 for requirement in considered}
+    # §6.6: *"the planner reads the ledger at each round boundary and
+    # re-prioritises remaining budget toward the least-covered high-weight
+    # requirements."* This is the re-prioritisation, and it is what turns a
+    # plan from an intention into a guarantee: a requirement the session has
+    # already covered stops competing for the minutes that are left.
+    #
+    # Seeded rather than subtracted, so everything downstream — the must-have
+    # floor, the log-utility, the cap — sees a requirement that is already
+    # partly done and allocates accordingly.
+    asked = already_asked or {}
+    questions: dict[str, int] = {
+        requirement["id"]: min(MAX_QUESTIONS_PER_REQUIREMENT, asked.get(requirement["id"], 0))
+        for requirement in considered
+    }
     remaining = float(total_minutes)
     uncovered: list[str] = []
 
@@ -427,6 +446,11 @@ def build_plan(
     )
     for requirement in musts:
         price = cost[requirement["id"]]
+        if questions[requirement["id"]] > 0:
+            # FR-2.9's floor is already met by the session itself. Spending a
+            # second question here to satisfy a rule the interview has already
+            # satisfied is the plan arguing with the ledger.
+            continue
         if remaining >= price:
             questions[requirement["id"]] = 1
             remaining -= price
@@ -462,12 +486,20 @@ def build_plan(
         questions[best_id] += 1
         remaining -= cost[best_id]
 
+    # `questions` holds the CUMULATIVE count, because that is what the
+    # log-utility needs: a requirement the session already covered twice must
+    # see the diminishing return of a third question, not the full value of a
+    # first one.
+    #
+    # What is REPORTED is the remainder. A plan is what is left to do, and
+    # "3 questions" shown to a student who has already answered two of them is
+    # the plan describing the past.
     allocations = [
         CoverageAllocation(
             requirement_id=requirement_id,
             requirement_text=by_id[requirement_id]["text"],
             grounded=bool(by_id[requirement_id].get("grounded")),
-            question_budget=count,
+            question_budget=count - asked.get(requirement_id, 0),
             round_type=rounds[requirement_id],
             priority=round(priorities[requirement_id], 4),
             rationale=_rationale(
@@ -476,10 +508,14 @@ def build_plan(
                 count,
                 bool(by_id[requirement_id].get("grounded")),
             ),
-            minutes=round(count * cost[requirement_id], 2),
+            minutes=round((count - asked.get(requirement_id, 0)) * cost[requirement_id], 2),
+            already_asked=asked.get(requirement_id, 0),
         )
         for requirement_id, count in questions.items()
-        if count > 0
+        # Nothing left to ask is nothing to show. The requirement is not gone —
+        # the session covered it, and `/sessions/{id}/coverage` is where that
+        # is recorded.
+        if count - asked.get(requirement_id, 0) > 0
     ]
     allocations.sort(key=lambda allocation: (-allocation.priority, allocation.requirement_id))
 
@@ -489,7 +525,7 @@ def build_plan(
     saturated = (
         bool(allocations)
         and all(
-            allocation.question_budget >= MAX_QUESTIONS_PER_REQUIREMENT
+            allocation.question_budget + allocation.already_asked >= MAX_QUESTIONS_PER_REQUIREMENT
             for allocation in allocations
         )
         and len(allocations) == len(considered)
