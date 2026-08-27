@@ -110,6 +110,27 @@ _HEADINGS = (
     "qualifications",
     "you will need",
     "what we are looking for",
+    # A placement mail labels the requirements block "JD:" and nothing else.
+    # Without this, "JD: Good knowledge of DSA, OOPs, DBMS." reads as prose and
+    # a whole posting's requirements are invisible.
+    "jd",
+    "job description",
+    "job role",
+    # NOT "responsibilities". The TODO said so before this was tried and was
+    # right: a responsibilities block is written in VERBS — "Build and
+    # orchestrate multi-agent AI systems", "Design AI-native solutions" — and
+    # `_split_conjunctions` turns each into "Build", "Design", "Deploy". On the
+    # real brochure that produced sixteen requirements that are not things,
+    # they are instructions to the person doing the job.
+    #
+    # Reading them properly needs a label-level test of *does this name a thing
+    # rather than an action*, which does not exist. Until it does, the section
+    # stays unread — a missing requirement is visible as a thin list, an
+    # invented one becomes an interview question about a verb.
+    "desired skills",
+    "technical skills required",
+    "eligibility",
+    "eligibility criteria",
 )
 
 #: A heading is the whole line ("SKILLS"), or a label with an explicit
@@ -143,6 +164,20 @@ _HEADING_WORDS = re.compile(
     r"(?<![\w-])(?:" + "|".join(re.escape(h) for h in _HEADINGS) + r")(?![\w-])",
     re.IGNORECASE,
 )
+
+
+#: Headings that may introduce an INLINE list and never open a bare one.
+#:
+#: A placement mail writes "JD: Good knowledge of DSA, OOPs, DBMS." — the
+#: requirements are on the same line and that is the only form worth reading.
+#: A brochure writes "Job description" as a section header over a
+#: RESPONSIBILITIES table, and opening a list there produces "Build", "Design",
+#: "Deploy" — verbs, sixteen of them, none of which is a thing anybody has.
+#:
+#: The distinction is already in the parse: a heading with a remainder is
+#: inline, one without opens the lines below it. These simply decline the
+#: second job.
+_INLINE_ONLY = frozenset({"jd", "job description", "job role"})
 
 
 def _looks_like_a_heading(line: str) -> bool:
@@ -198,11 +233,17 @@ _PUNCT_EDGES = re.compile(r"^[\s\-–•·.:;()\[\]&]+|[\s.:;,()\[\]&]+$")
 _ELIGIBILITY = re.compile(
     r"\b\d+\s*\+?\s*(?:years?|yrs?|months?)\b|\bcgpa\b|\bb\.?\s?tech\b|"
     r"\bdegrees?\b|\bmust\s+have\b|\bminimum\b|\bgraduat\w*\b|\bbatch\s+of\b|"
-    # "B.E/B. Tech/M.E/M. Tech degrees" splits into fragments like "Tech/M.E/M"
-    # and "Tech degrees", neither of which contains a recognisable degree name —
-    # so both survived as requirements. Note `degrees?`: the plural is what a
-    # brochure writes, and the singular pattern missed every one of them.
-    r"\bm\.?\s?tech\b|\bmca\b|\bbca\b|\barrears?\b",
+    r"\bm\.?\s?tech\b|\bmca\b|\bbca\b|\barrears?\b|"
+    # "2027 batch" and "no active backlogs" both survived as REQUIREMENTS once
+    # an unheaded line could enumerate — the filter knew "batch of" and not
+    # "2027 batch", and did not know "backlog" at all.
+    r"\b20\d{2}\s+batch\b|\bbacklogs?\b|\bbond\b|\blpa\b|\bpackage\b|"
+    # A bare "Tech" is what is left of "B.E/B. Tech/M.E/M. Tech degrees" after
+    # the sentence splitter has had it. It is never a requirement on its own —
+    # the real ones are named technologies, and "Tech Stack" is consumed as a
+    # heading long before it reaches here. Word-anchored, so "FinTech" is
+    # untouched.
+    r"\btech\b",
     re.IGNORECASE,
 )
 
@@ -290,6 +331,79 @@ def _split_conjunctions(label: str) -> list[str]:
 _BULLET = re.compile(r"^\s*(?:[-*•·▪‣⁃]|\d+[.)]|[a-z][.)])\s+", re.IGNORECASE)
 
 
+#: How many words a fragment may have before it stops looking like a list item.
+#:
+#: Tighter than `MAX_WORDS`, and deliberately: this is the test applied with NO
+#: heading vouching for the line, so it has to carry the whole decision alone.
+_ENUMERATION_ITEM_WORDS = 3
+
+#: How many delimited fragments make a run look enumerated rather than written.
+_ENUMERATION_MIN_ITEMS = 3
+
+#: Longer than this and the line is a sentence, not a list — however many
+#: commas it happens to contain.
+_ENUMERATION_MAX_LINE_WORDS = 12
+
+
+def _reads_as_a_list(line: str) -> bool:
+    """Does this line enumerate, with nothing above it saying so?
+
+    Three of the twelve golden documents extracted NOTHING before this existed,
+    and the first of them is the posting §3.2.1 calls the MEDIAN campus JD:
+
+        "Looking for SDE trainees. Good knowledge of DSA, OOPs and DBMS."
+
+    No heading, so `_list_lines` never entered list mode, so the three
+    requirements in that sentence were invisible. The archetype backfill hid it
+    at the API level by supplying eight standard ones — which is worse than it
+    sounds, because the posting's OWN requirements were the ones being replaced.
+
+    The rule is structural rather than lexical: several delimited fragments,
+    each short. That is what a list looks like when nobody labelled it.
+
+        "Good knowledge of DSA, OOPs and DBMS."       -> DSA / OOPs / DBMS
+        "write SQL against our warehouse, build       -> fragments of five and
+         dashboards in Tableau, and present               seven words
+         findings to business stakeholders."
+
+    The second is prose with commas in it, and the word cap is the only thing
+    separating them. Set at three rather than five because there is no heading
+    vouching for this line — the test carries the decision by itself, and the
+    cost of getting it wrong is a fabricated requirement.
+    """
+    # A whole LINE this long is a sentence, whatever punctuation is in it.
+    #
+    # This cap is the one that matters, and a twelve-document corpus could not
+    # find it: every golden posting is short, so none of them contains a long
+    # prose sentence with commas. The real 365-line brochure does, and without
+    # this the rule took it from 49 requirements to 139 — "data", "quality",
+    # "operations", "Build", "Design", "Beyond delivering working", all cut out
+    # of one sentence about delivering solutions across software and data.
+    if len(line.split()) > _ENUMERATION_MAX_LINE_WORDS:
+        return False
+
+    fragments = [_clean(fragment) for fragment in _DELIMITERS.split(line)]
+    fragments = [fragment for fragment in fragments if fragment]
+    if len(fragments) < _ENUMERATION_MIN_ITEMS:
+        return False
+
+    short = sum(1 for fragment in fragments if len(fragment.split()) <= _ENUMERATION_ITEM_WORDS)
+    # Most of them, not all: "Good knowledge of DSA" cleans to "DSA" but a
+    # trailing "and DBMS." can arrive with punctuation still attached.
+    if short < len(fragments) - 1:
+        return False
+
+    # And the items have to look like NAMES. Postings capitalise their
+    # technologies — DSA, OOPs, DBMS, Docker — and the prose that fools the
+    # length tests does not: "software, data, infrastructure, quality".
+    #
+    # The same test as the one guarding over-long fragments, for the same
+    # reason: with no heading vouching for this line, a wrong answer here
+    # fabricates a requirement, and fabricating is worse than missing.
+    named = sum(1 for fragment in fragments if any(ch.isupper() for ch in fragment))
+    return named >= len(fragments) - 1
+
+
 def _list_lines(text: str) -> list[str]:
     """The lines of the document that are enumerating something."""
     lines = text.splitlines()
@@ -332,6 +446,10 @@ def _list_lines(text: str) -> list[str]:
                 # "Required: Python, SQL" - the list is on the heading line.
                 out.append(remainder)
                 in_list = False
+            elif heading.group(1).strip().lower() in _INLINE_ONLY:
+                # "Job description" over a responsibilities table. Named, and
+                # deliberately not opened. See `_INLINE_ONLY`.
+                in_list = False
             else:
                 # "SKILLS" alone - the list is on the lines that follow.
                 in_list = True
@@ -365,6 +483,11 @@ def _list_lines(text: str) -> list[str]:
                 started = True
             else:
                 in_list = False
+            continue
+
+        # No heading above it, and it still enumerates. See `_reads_as_a_list`.
+        if _reads_as_a_list(line):
+            out.append(line)
 
     return out
 

@@ -63,10 +63,20 @@ _BOILERPLATE_LINE = re.compile(
     r"page\s+\d+(?:\s+of\s+\d+)?|\d+\s*/\s*\d+|"
     r"(?:this\s+)?(?:e-?mail|message).*(?:confidential|intended\s+recipient).*|"
     r"disclaimer\s*:?.*|"
-    r"(?:thanks|regards|best\s+regards|warm\s+regards|sincerely)[\s,.!]*(?:\w+\s*){0,4}|"
+    # `rejoin_layout` runs first and a sign-off ends in a comma, so
+    # "Regards," is already joined to "Placement Cell, Example University"
+    # by the time this sees it. The old tail allowed four bare words and no
+    # punctuation, so the joined line matched nothing and three lines of
+    # signature became three requirements.
+    r"(?:thanks|regards|best\s+regards|warm\s+regards|sincerely)[\s,.!]*.{0,80}|"
     r"(?:from|sent|to|cc|bcc|subject)\s*:\s*.*|"
     r"-{3,}\s*(?:original\s+message|forwarded\s+message).*|"
     r"placement\s+(?:cell|office|team)\s*[,.]?\s*.*|"
+    # §6.1: *"Detect and separate the ADMINISTRATIVE block (dates, venue,
+    # registration link) from the role block."* These are labels on a form,
+    # not requirements, and an unheaded line that enumerates now reads
+    # "Role: Software Engineer Trainee" as a skill.
+    r"(?:venue|date|time|registration|register|drive\s+date|reporting\s+time|mode\s+of\s+(?:test|interview)|last\s+date)\s*:.*|"
     r"unsubscribe.*|"
     r"follow\s+us\s+on.*|"
     r"www\.\S+|https?://\S+"

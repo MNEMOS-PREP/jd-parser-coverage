@@ -25,11 +25,16 @@ from backend_M02_JD_Parser.normalise import normalise
 
 #: Where extraction stands as of 2026-08-27, rounded down.
 #:
+#: Raised from 0.55 the same day. The corpus was committed at 0.581, named four
+#: bugs within an hour, and the fixes took it to 0.761 — which is the ratchet
+#: working, and the reason the floor moves with it rather than staying where it
+#: was set.
+#:
 #: Below §13's 0.85, and that gap is the point of writing it here: the target is
 #: a claim about real postings and this is a measurement on a synthetic set, so
 #: the honest thing is two numbers rather than one number and a hope.
-F1_FLOOR = 0.55
-PRECISION_FLOOR = 0.55
+F1_FLOOR = 0.72
+PRECISION_FLOOR = 0.70
 
 #: AC-2.4's target is 0.95 and the set is small enough that one wrong answer
 #: moves it three points. Held at the measured value.

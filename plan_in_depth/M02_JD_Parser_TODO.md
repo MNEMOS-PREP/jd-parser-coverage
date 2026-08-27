@@ -117,8 +117,8 @@ Spec §13. A gate is release-blocking; the rest are tracked.
 |---|---|---|
 | AC-2.1 **[GATE]** | ✅ | Every measurable must-have gets ≥1 probe. Enforced in `build_plan` as a floor seeded before any second question, and asserted. |
 | AC-2.2 **[GATE]** | 🟡 | `not_measured` never renders as a number — `MasteryBar` has no bar for it and `coverage_score` is `null`, never `0.0`, when nothing was measured. **The UI test the gate names does not exist**; this is asserted on the backend only. |
-| AC-2.3 | ⬜ | **Requirement extraction F1 on a golden set: no golden set.** §10 wants 25 hand-annotated JDs. Until it exists, every extraction fix is verified anecdotally and a regression is invisible. **This is the single biggest hole in the module's testing.** |
-| AC-2.4 | ⬜ | Disjunction accuracy ≥ 0.95 — same problem, same missing corpus. §10 asks for 30 real disjunction strings specifically. |
+| AC-2.3 | 🟡 | **Measured 2026-08-27: F1 0.766** (precision 0.750, recall 0.783) against a target of 0.85. 12 hand-annotated JDs, 11 synthetic and 1 real. `MEASURES_REAL_WORLD` is False and says why. The floor is a ratchet set at the measured value — committed at 0.581, the corpus named four bugs within the hour, the fixes took it to 0.766. §10 asks for 25; there are 12 |
+| AC-2.4 | 🟡 | **Measured 2026-08-27: 0.90** over §10's 30 strings. Half are NEGATIVE cases — "CI/CD", "TCP/IP", "A/B testing", "24/7 support" — because splitting one fabricates a skill |
 | AC-2.5 | ⬜ | p95 cold parse ≤ 8 s. Never measured — see FR-2.16. |
 | AC-2.6 | ✅ | Plans differ ≥ 30% between students on one JD. `test_two_students_on_one_posting_get_different_plans` asserts it directionally: the student weak on SQL is asked about SQL more, and the reverse for DP. |
 | AC-2.7 | ⬜ | Drive-chip vs manual-paste ratio. Nothing to track — no chips. |
