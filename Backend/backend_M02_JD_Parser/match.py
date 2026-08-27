@@ -224,6 +224,88 @@ def _cgpa_verdict(criteria: EligibilityCriteria, grade: GradeReading) -> Verdict
     )
 
 
+#: What a degree line calls a branch, mapped to the code a posting uses.
+#:
+#: Deliberately small and exact. A resume says "B.Tech Computer Science and
+#: Engineering" and a posting says "CSE", and those are the same branch; a
+#: resume saying "B.Tech Electronics" against a posting saying "EEE" is a
+#: judgement call, and this table declines to make it — an unmatched degree
+#: produces `unknown`, not `fails`.
+_DEGREE_TO_BRANCH = {
+    "computer science": "CSE",
+    "computer science and engineering": "CSE",
+    "cse": "CSE",
+    "information technology": "IT",
+    "information science": "ISE",
+    "electronics and communication": "ECE",
+    "ece": "ECE",
+    "electrical and electronics": "EEE",
+    "eee": "EEE",
+    "mechanical": "MECH",
+    "civil": "CIVIL",
+    "artificial intelligence": "AIML",
+    "ai and ml": "AIML",
+    "artificial intelligence and data science": "AIDS",
+    "data science": "AIDS",
+}
+
+
+def _branch_of(degree: str | None) -> str | None:
+    """The branch code a degree line names, or `None`.
+
+    Longest match wins: "computer science and engineering" must beat "computer
+    science", or every CSE degree with the full spelling reads as the short one
+    — harmless here, and not harmless the day the two diverge.
+    """
+    if not degree:
+        return None
+    lowered = " ".join(degree.lower().split())
+    for name in sorted(_DEGREE_TO_BRANCH, key=len, reverse=True):
+        if name in lowered:
+            return _DEGREE_TO_BRANCH[name]
+    return None
+
+
+def _branch_verdict(criteria: EligibilityCriteria, branches: list[str]) -> Verdict | None:
+    """Whether the student's branch is on the posting's list.
+
+    `unknown` whenever we could not read a branch off the resume, which is
+    common: a degree line reading "B.Tech, 2026" names no branch at all. Telling
+    a student they are ineligible because their resume was terse would be the
+    same mistake as converting a grade scale.
+    """
+    if not criteria.allowed_branches:
+        return None
+
+    allowed = ", ".join(criteria.allowed_branches)
+    if not branches:
+        return Verdict(
+            criterion="branch",
+            state="unknown",
+            required=allowed,
+            detail=(
+                f"This drive is open to {allowed}. We could not read a branch off your resume, "
+                "so we cannot check it — that is a gap in the resume, not a verdict on you."
+            ),
+        )
+
+    overlap = sorted(set(branches) & set(criteria.allowed_branches))
+    return Verdict(
+        criterion="branch",
+        state="meets" if overlap else "fails",
+        required=allowed,
+        yours=", ".join(sorted(branches)),
+        detail=(
+            f"This drive is open to {allowed} and your resume reads as {', '.join(sorted(branches))}."
+            + (
+                ""
+                if overlap
+                else " This is a hard filter — it is checked before anyone reads the rest."
+            )
+        ),
+    )
+
+
 def _batch_verdict(criteria: EligibilityCriteria, years: list[int]) -> Verdict | None:
     if not criteria.year_of_passing:
         return None
@@ -303,6 +385,13 @@ def build_match(
     batch = _batch_verdict(criteria, years)
     if batch:
         verdicts.append(batch)
+
+    branches = [
+        code for entry in education if (code := _branch_of(entry.get("degree"))) is not None
+    ]
+    branch = _branch_verdict(criteria, branches)
+    if branch:
+        verdicts.append(branch)
 
     # ------------------------------------------------------------------
     #  Evidence: does the resume actually SAY the thing the posting wants?

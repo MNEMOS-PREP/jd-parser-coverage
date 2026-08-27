@@ -532,11 +532,32 @@ function EligibilityBanner({
   if (eligibility.year_of_passing.length > 0) {
     bars.push(`${eligibility.year_of_passing.join(", ")} batch`);
   }
+  if (eligibility.max_backlogs_history !== null) {
+    // Distinct from "no ACTIVE backlogs" on purpose: a student who cleared an
+    // old arrear passes that bar and fails this one.
+    bars.push("no backlogs ever");
+  }
+  if (eligibility.allowed_branches.length > 0) {
+    bars.push(eligibility.allowed_branches.join(" / "));
+  }
   if (eligibility.bond_months !== null) {
     bars.push(
       eligibility.bond_months % 12 === 0
         ? `${eligibility.bond_months / 12}-year bond`
         : `${eligibility.bond_months}-month bond`,
+    );
+  }
+  if (eligibility.location.length > 0) {
+    bars.push(eligibility.location.join(" / "));
+  }
+  if (eligibility.package_lpa_total !== null) {
+    // Both numbers when the posting gives both. A 6.5 LPA headline with 2 LPA
+    // of variable is a 4.5 LPA salary, and students compare the wrong one.
+    bars.push(
+      eligibility.package_lpa_fixed !== null &&
+        eligibility.package_lpa_fixed !== eligibility.package_lpa_total
+        ? `${eligibility.package_lpa_total} LPA (${eligibility.package_lpa_fixed} fixed)`
+        : `${eligibility.package_lpa_total} LPA`,
     );
   }
 

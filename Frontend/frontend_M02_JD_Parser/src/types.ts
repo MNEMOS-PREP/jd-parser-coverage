@@ -117,6 +117,21 @@ export interface EligibilityCriteria {
   max_backlogs_active: number | null;
   year_of_passing: number[];
   bond_months: number | null;
+  /**
+   * "No backlogs in the entire academic career" is a stricter bar than "no
+   * ACTIVE backlogs": a student who cleared an old arrear passes one and fails
+   * the other, so they are two fields rather than one.
+   */
+  max_backlogs_history: number | null;
+  /** Normalised branch codes. Empty means we found no restriction — NOT that
+   *  we verified there is none. */
+  allowed_branches: string[];
+  location: string[];
+  /** The headline number. */
+  package_lpa_total: number | null;
+  /** The part that is not variable. A 6.5 LPA offer with 2 LPA variable is a
+   *  4.5 LPA salary, and students compare the wrong one constantly. */
+  package_lpa_fixed: number | null;
   /** The lines these were read from, so a student can check the cutoff. */
   raw_spans: SourceSpan[];
   stated: boolean;

@@ -1045,20 +1045,131 @@ _BATCH = re.compile(
 )
 
 #: "2 year bond", "service agreement of 18 months".
+#: A colon is how a posting labels a field, and this pattern required a space.
+#: "Bond: 18 months" — on this module's own sample JD, on the paste screen —
+#: read as no bond at all, which is the difference between a student signing an
+#: eighteen-month commitment knowingly and finding out at the offer letter.
 _BOND = re.compile(
-    r"(?P<years>\d{1,2})\s*[- ]?\s*year\s+(?:bond|service\s+agreement)"
-    r"|(?:bond|service\s+agreement)\s+(?:of\s+)?(?P<months>\d{1,3})\s*months?"
-    r"|(?P<years2>\d{1,2})\s*[- ]?\s*year\s+commitment",
+    r"(?P<years>\d{1,2})\s*[- ]?\s*years?\s+(?:bond|service\s+agreement)"
+    r"|(?:bond|service\s+agreement)\s*[:\-]?\s*(?:of\s+|period\s+)?(?P<months>\d{1,3})\s*months?"
+    r"|(?:bond|service\s+agreement)\s*[:\-]?\s*(?:of\s+)?(?P<years3>\d{1,2})\s*[- ]?\s*years?"
+    r"|(?P<years2>\d{1,2})\s*[- ]?\s*years?\s+commitment",
     re.IGNORECASE,
 )
+
+
+#: "CSE/IT/ECE", "Computer Science, IT and ECE only", "B.Tech CSE/IS".
+#:
+#: The slash IS split here, unlike everywhere else in this file — `_DELIMITERS`
+#: refuses it because "CI/CD" is one name. A branch list is the one context
+#: where a slash reliably means "or": nobody writes a single degree called
+#: "CSE/IT". The pattern is anchored on a branch vocabulary rather than on the
+#: punctuation, which is what keeps that narrow.
+_BRANCHES = {
+    "cse": "CSE",
+    "cs": "CSE",
+    "computer science": "CSE",
+    "computer science and engineering": "CSE",
+    "it": "IT",
+    "information technology": "IT",
+    "ise": "ISE",
+    "is": "ISE",
+    "information science": "ISE",
+    "ece": "ECE",
+    "electronics and communication": "ECE",
+    "eee": "EEE",
+    "electrical": "EEE",
+    "eie": "EIE",
+    "mech": "MECH",
+    "mechanical": "MECH",
+    "civil": "CIVIL",
+    "aids": "AIDS",
+    "aiml": "AIML",
+    "ai": "AIML",
+    "csbs": "CSBS",
+    "chemical": "CHEMICAL",
+    "biotech": "BIOTECH",
+}
+
+#: Only read inside a branch-shaped context, never from the whole document.
+#: "IT" and "AI" and "IS" are ordinary English fragments, and scanning a JD for
+#: them produces a branch list off the word "it".
+_BRANCH_CONTEXT = re.compile(
+    r"(?:branch(?:es)?|discipline|stream|circuit|eligible\s+branch(?:es)?|only\s+for|open\s+to)"
+    r"\s*[:\-]?\s*(?P<list>[A-Za-z&,/ ]{2,120})"
+    r"|(?P<list2>(?:[A-Z]{2,6})(?:\s*[/,]\s*[A-Z]{2,6}){1,6})\s*(?:branch(?:es)?|only|students?)?",
+)
+
+#: "6.5 LPA", "₹6.5 LPA", "CTC 6.5 LPA", "4.5 fixed + 2 variable".
+_PACKAGE = re.compile(
+    r"(?:ctc|package|salary|compensation)?\s*[:\-]?\s*"
+    r"(?:₹|rs\.?|inr)?\s*(?P<value>\d{1,3}(?:\.\d{1,2})?)\s*(?:lpa|lakhs?\s*(?:per\s*annum)?|l\b)",
+    re.IGNORECASE,
+)
+_FIXED = re.compile(
+    r"(?:₹|rs\.?|inr)?\s*(?P<value>\d{1,3}(?:\.\d{1,2})?)\s*(?:lpa|l\b)?\s*(?:fixed|base)",
+    re.IGNORECASE,
+)
+
+#: "Bangalore", "based in Chennai", "Location: Hyderabad / Pune".
+_LOCATION = re.compile(
+    r"(?:location|based\s+(?:in|out\s+of)|posting|work\s+location|office)\s*[:\-]?\s*"
+    r"(?P<list>[A-Za-z,/&\- ]{3,80})",
+    re.IGNORECASE,
+)
+
+#: "no backlogs in the entire academic career", "no history of backlogs".
+_HISTORY_BACKLOGS = re.compile(
+    r"(?:no|zero|nil)\s+(?:backlog|arrear)s?\s+(?:in\s+)?"
+    r"(?:the\s+)?(?:entire\s+|whole\s+)?(?:academic\s+)?(?:career|history|history\s+of\s+study)"
+    r"|no\s+history\s+of\s+(?:backlog|arrear)s?"
+    r"|(?:no|zero|nil)\s+(?:standing|past|historical)\s+(?:backlog|arrear)s?",
+    re.IGNORECASE,
+)
+
+
+def _read_branches(text: str) -> list[str]:
+    """Branch codes the posting allows, normalised and deduplicated.
+
+    Returns `[]` when the posting does not name any, which is different from
+    "all branches welcome" and is treated as such: an empty list means we did
+    not find a restriction, not that we verified there is none.
+    """
+    found: list[str] = []
+    for match in _BRANCH_CONTEXT.finditer(text):
+        raw = match.group("list") or match.group("list2") or ""
+        for token in re.split(r"[,/&]|\band\b|\bor\b", raw):
+            key = " ".join(token.lower().split()).strip(". ")
+            code = _BRANCHES.get(key)
+            if code and code not in found:
+                found.append(code)
+    return found
+
+
+def _read_location(text: str) -> list[str]:
+    match = _LOCATION.search(text)
+    if not match:
+        return []
+    places: list[str] = []
+    for token in re.split(r"[,/&]|\band\b", match.group("list")):
+        name = " ".join(token.split()).strip(". ")
+        # Two characters is not a city, and a whole clause is not one either.
+        if 2 < len(name) <= 30 and name[0].isupper() and name not in places:
+            places.append(name)
+    return places[:6]
 
 
 class EligibilityCriteria(BaseModel):
     """The hard filters on who may sit this drive (§5, FR-2.4).
 
-    A PARTIAL §5 `EligibilityCriteria`. `allowed_branches`, `location` and the
-    two package figures are not extracted yet and are absent rather than
-    guessed — the same rule the `Requirement` fields follow.
+    §5's `EligibilityCriteria`, complete as of 2026-08-27.
+
+    Every field is `None` or empty when the posting does not say. Not zero and
+    not a permissive default: "this JD states no CGPA cutoff" and "this JD has
+    no cutoff" are different facts, and a `min_cgpa: 0.0` would tell a student
+    they are eligible for a drive nobody has checked them against. An empty
+    `allowed_branches` means we found no restriction, NOT that we verified
+    there is none.
 
     `stated` is the field a screen branches on. Every value being `None` and
     the posting genuinely having no cutoff look identical otherwise, and only
@@ -1069,6 +1180,19 @@ class EligibilityCriteria(BaseModel):
     max_backlogs_active: int | None = None
     year_of_passing: list[int] = Field(default_factory=list)
     bond_months: int | None = None
+    #: "no backlogs in the entire academic career" is a stricter bar than "no
+    #: ACTIVE backlogs", and a student who cleared an old arrear passes one and
+    #: fails the other. Two fields because they are two rules.
+    max_backlogs_history: int | None = None
+    #: Normalised branch codes: CSE, IT, ECE. Empty when none are named.
+    allowed_branches: list[str] = Field(default_factory=list)
+    #: Cities named as the posting or work location.
+    location: list[str] = Field(default_factory=list)
+    #: What the posting advertises. `total` is the headline number and `fixed`
+    #: the part that is not variable — a 6.5 LPA offer with 2 LPA of variable
+    #: is a 4.5 LPA salary, and students compare the wrong one constantly.
+    package_lpa_total: float | None = None
+    package_lpa_fixed: float | None = None
     #: The lines these were read from, so a student can check the cutoff we are
     #: about to tell them they miss.
     raw_spans: list[SourceSpan] = Field(default_factory=list)
@@ -1086,6 +1210,10 @@ class EligibilityCriteria(BaseModel):
             or self.max_backlogs_active is not None
             or self.year_of_passing
             or self.bond_months is not None
+            or self.max_backlogs_history is not None
+            or self.allowed_branches
+            or self.location
+            or self.package_lpa_total is not None
         )
 
 
@@ -1129,12 +1257,39 @@ def extract_eligibility(text: str) -> EligibilityCriteria:
         criteria.year_of_passing = sorted(years)
         spans.extend(_span_at(text, m) for m in _BATCH.finditer(text))
 
+    match = _HISTORY_BACKLOGS.search(text)
+    if match:
+        # The stricter bar, and it implies the looser one: a posting that wants
+        # no backlogs EVER certainly does not want current ones. `_BACKLOGS`
+        # above will usually have set `max_backlogs_active` from the same
+        # sentence; this makes that true even when the phrasing dodges it.
+        criteria.max_backlogs_history = 0
+        criteria.max_backlogs_active = 0
+        spans.append(_span_at(text, match))
+
+    branches = _read_branches(text)
+    if branches:
+        criteria.allowed_branches = branches
+
+    places = _read_location(text)
+    if places:
+        criteria.location = places
+
+    match = _PACKAGE.search(text)
+    if match:
+        criteria.package_lpa_total = float(match.group("value"))
+        spans.append(_span_at(text, match))
+    fixed = _FIXED.search(text)
+    if fixed:
+        criteria.package_lpa_fixed = float(fixed.group("value"))
+
     match = _BOND.search(text)
     if match:
         if match.group("months"):
             criteria.bond_months = int(match.group("months"))
         else:
-            criteria.bond_months = int(match.group("years") or match.group("years2")) * 12
+            years = match.group("years") or match.group("years2") or match.group("years3")
+            criteria.bond_months = int(years) * 12
         spans.append(_span_at(text, match))
 
     criteria.raw_spans = sorted(spans, key=lambda span: span.start)

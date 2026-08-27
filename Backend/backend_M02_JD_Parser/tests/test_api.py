@@ -1313,3 +1313,110 @@ def test_saturation_blames_the_ontology_when_the_ontology_is_the_cause(client, m
     assert len(plan["unmeasurable"]) > len(plan["allocations"])
     assert "can be tested at all" in plan["suggestion"]
     assert "This posting only has enough" not in plan["suggestion"]
+
+
+# ---------------------------------------------------------------------------
+#  Eligibility, the rest of it (FR-2.4)
+# ---------------------------------------------------------------------------
+
+
+FULL_ELIGIBILITY_JD = """Company: XYZ Technologies
+Role: Software Engineer Trainee
+Package: 6.5 LPA (4.5 fixed + 2 variable)
+Eligibility: 7.5 CGPA, no active backlogs, CSE/IT/ECE
+Location: Bangalore / Chennai
+No backlogs in the entire academic career.
+Bond: 18 months
+Batch of 2026
+"""
+
+
+def test_the_whole_eligibility_block_is_read(client, m04):
+    """§5's `EligibilityCriteria`, complete.
+
+    This is the module's own sample JD, the one the paste screen offers. Four
+    of its fields were being read and five were being dropped — including the
+    package, which is the number a student decides on.
+    """
+    body = _parsed(client, FULL_ELIGIBILITY_JD)
+    eligibility = body["eligibility"]
+
+    assert eligibility["min_cgpa"] == 7.5
+    assert eligibility["max_backlogs_active"] == 0
+    assert eligibility["max_backlogs_history"] == 0
+    assert eligibility["allowed_branches"] == ["CSE", "IT", "ECE"]
+    assert eligibility["location"] == ["Bangalore", "Chennai"]
+    assert eligibility["package_lpa_total"] == 6.5
+    assert eligibility["package_lpa_fixed"] == 4.5
+    assert eligibility["year_of_passing"] == [2026]
+    assert eligibility["bond_months"] == 18
+
+
+def test_a_bond_written_with_a_colon_is_still_a_bond(client, m04):
+    """ "Bond: 18 months" read as NO BOND.
+
+    The pattern required a space where a posting writes a colon — and a colon
+    is how a posting labels a field. On this module's own sample JD. The
+    difference is a student signing an eighteen-month commitment knowingly
+    versus finding out at the offer letter.
+    """
+    for text, months in (
+        ("Bond: 18 months", 18),
+        ("Bond: 2 years", 24),
+        ("2 year bond", 24),
+        ("Service agreement of 24 months", 24),
+    ):
+        body = _parsed(client, f"Engineer\n\nRequirements:\n- SQL\n\n{text}\n")
+        assert body["eligibility"]["bond_months"] == months, text
+
+
+BOTH_BACKLOG_BARS_JD = """Engineer
+
+Requirements:
+- SQL
+
+No backlogs in the entire academic career.
+"""
+
+ACTIVE_BACKLOGS_ONLY_JD = """Engineer
+
+Requirements:
+- SQL
+
+No active backlogs.
+"""
+
+
+def test_history_backlogs_are_a_stricter_bar_than_active_ones(client, m04):
+    """A student who cleared an old arrear passes one bar and fails the other.
+
+    Two fields because they are two rules — but "no backlogs in the entire
+    academic career" is the STRICTER of the two and implies the other, so both
+    are set. A posting that wants no backlogs ever certainly does not want
+    current ones.
+
+    Where they come apart is the common phrasing: "no ACTIVE backlogs" sets
+    only `max_backlogs_active`, and a student with a cleared arrear passes.
+    """
+    both = _parsed(client, BOTH_BACKLOG_BARS_JD)["eligibility"]
+
+    assert both["max_backlogs_history"] == 0
+    assert both["max_backlogs_active"] == 0, "the stricter bar implies the looser one"
+
+    active_only = _parsed(client, ACTIVE_BACKLOGS_ONLY_JD)["eligibility"]
+
+    assert active_only["max_backlogs_active"] == 0
+    assert active_only["max_backlogs_history"] is None, "a cleared arrear is still allowed here"
+
+
+def test_no_branches_named_is_empty_not_all_branches(client, m04):
+    """Empty means we found no restriction, NOT that we verified there is none.
+
+    The distinction matters at the point where a screen wants to say "you are
+    eligible": it can say "no branch restriction stated" and it cannot say
+    "your branch is allowed".
+    """
+    body = _parsed(client, "Engineer\n\nRequirements:\n- SQL\n\nMinimum 7.0 CGPA.\n")
+
+    assert body["eligibility"]["allowed_branches"] == []
+    assert body["eligibility"]["stated"] is True, "a CGPA cutoff is still a stated criterion"
