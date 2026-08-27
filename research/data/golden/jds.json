@@ -1,0 +1,205 @@
+{
+  "_comment": [
+    "Hand-annotated job descriptions for AC-2.3 (requirement extraction F1).",
+    "",
+    "READ `golden.py` BEFORE QUOTING A NUMBER FROM THIS FILE. These are",
+    "SYNTHETIC — written to cover the shapes the spec names, not sampled from",
+    "the postings students actually receive. The one exception is `cognizant_ace`,",
+    "which is real: Testing/JD_Testing/Student Brochure_2027 Cognizant Ace Team",
+    "program.pdf, extracted and trimmed to the sections that carry requirements.",
+    "",
+    "`requirements` is what a careful reader would list, in the posting's own",
+    "words. It is NOT what the parser currently returns — several entries here",
+    "are things it misses, on purpose, because a golden set that agrees with the",
+    "implementation measures nothing.",
+    "",
+    "The spec asks for 25. There are 12."
+  ],
+
+  "cases": [
+    {
+      "id": "campus_tiny",
+      "note": "§3.2.1 trap 1 calls this the MEDIAN campus JD, not the edge case.",
+      "role": "Software Engineer Trainee",
+      "text": "Looking for SDE trainees. Good knowledge of DSA, OOPs and DBMS.",
+      "requirements": ["DSA", "OOPs", "DBMS"]
+    },
+    {
+      "id": "campus_standard",
+      "note": "The shape a placement cell mails out most often.",
+      "role": "Software Engineer",
+      "text": "Company: XYZ Technologies\nRole: Software Engineer Trainee\nPackage: 6.5 LPA (4.5 fixed + 2 variable)\nEligibility: 7.5 CGPA, no active backlogs, CSE/IT/ECE\nJD: Good knowledge of DSA, OOPs, DBMS. Should be a team player with\nexcellent communication. Knowledge of any one of Java/Python/C++.\nBond: 18 months",
+      "requirements": [
+        "DSA",
+        "OOPs",
+        "DBMS",
+        "team player",
+        "communication",
+        "Java",
+        "Python",
+        "C++"
+      ]
+    },
+    {
+      "id": "bulleted_requirements",
+      "note": "Bullets with requirements written as sentences — six words, no delimiter.",
+      "role": "Backend Engineer",
+      "text": "Backend Engineer\n\nRequirements:\n- Strong Python and SQL\n- Experience with Docker and Kubernetes\n- Familiarity with Git\n\nNice to have:\n- Exposure to Kafka",
+      "requirements": ["Python", "SQL", "Docker", "Kubernetes", "Git", "Kafka"]
+    },
+    {
+      "id": "table_style",
+      "note": "A skills table flattened by a PDF text layer. Compound headings.",
+      "role": "Full Stack Engineer",
+      "text": "Technologies & Skills\n\nPython, Java / .NET, JavaScript / TypeScript, React /\nAngular, REST APIs, SQL\n\nCloud & DevOps\n\nAWS / Azure / GCP, Git, CI/CD pipelines, Containers",
+      "requirements": [
+        "Python",
+        "Java / .NET",
+        "JavaScript / TypeScript",
+        "React / Angular",
+        "REST APIs",
+        "SQL",
+        "AWS / Azure / GCP",
+        "Git",
+        "CI/CD pipelines",
+        "Containers"
+      ]
+    },
+    {
+      "id": "prose_only",
+      "note": "No headings, no bullets. The parser is weakest here and should be.",
+      "role": "Data Analyst",
+      "text": "We are hiring a Data Analyst. You will write SQL against our warehouse, build dashboards in Tableau, and present findings to business stakeholders. Comfort with Python is useful.",
+      "requirements": ["SQL", "Tableau", "Python"]
+    },
+    {
+      "id": "disjunction_heavy",
+      "note": "EC-2.3. Three separate choices in one posting.",
+      "role": "Backend Engineer",
+      "text": "Requirements:\n- Java/Python/C++\n- Experience with Docker or Kubernetes\n- Any one of MySQL, PostgreSQL or Oracle",
+      "requirements": [
+        "Java",
+        "Python",
+        "C++",
+        "Docker",
+        "Kubernetes",
+        "MySQL",
+        "PostgreSQL",
+        "Oracle"
+      ]
+    },
+    {
+      "id": "soft_skills",
+      "note": "§3.2.1 trap 3's three tiers, in one posting.",
+      "role": "Associate Consultant",
+      "text": "Requirements:\n- Excellent written and verbal communication\n- Must be a team player\n- A go-getter attitude\n- Strong analytical reasoning",
+      "requirements": [
+        "communication",
+        "team player",
+        "go-getter attitude",
+        "analytical reasoning"
+      ]
+    },
+    {
+      "id": "non_technical",
+      "note": "EC-2.5. A large share of mass-recruiter drives.",
+      "role": "HR Executive",
+      "text": "HR Executive\n\nRequirements:\n- Excellent communication and interpersonal skills\n- Familiarity with HR fundamentals and payroll\n- Stakeholder management\n\nEligibility: any graduate, 2026 batch.",
+      "requirements": [
+        "communication",
+        "interpersonal skills",
+        "HR fundamentals",
+        "payroll",
+        "Stakeholder management"
+      ]
+    },
+    {
+      "id": "email_forward",
+      "note": "EC-2.4. The job is 14 words inside 90 of mail furniture.",
+      "role": "Software Engineer",
+      "text": "From: placements@example.edu\nSent: Monday 4 August\nSubject: FW: Zoho drive\n\nDear students,\n\nPlease find the JD below. Register on the portal by Friday.\n\nRequirements: C++, Data Structures, Operating Systems.\n\nRegards,\nPlacement Cell, Example University\nwww.example.edu\n\n-------- Forwarded message --------\nThis email and any attachments are confidential and intended solely for the intended recipient of this message. If you have received it in error please delete it.\n© 2026 Example University. All rights reserved.",
+      "requirements": ["C++", "Data Structures", "Operating Systems"]
+    },
+    {
+      "id": "boilerplate_footer",
+      "note": "The brochure failure: a footer repeated once per page.",
+      "role": "Backend Engineer",
+      "text": "Requirements:\n- Python\n© 2026-2027 Acme. All rights reserved.\n- SQL\n© 2026-2027 Acme. All rights reserved.\n- Docker\n© 2026-2027 Acme. All rights reserved.",
+      "requirements": ["Python", "SQL", "Docker"]
+    },
+    {
+      "id": "eligibility_only",
+      "note": "EC-2.1. Almost no requirements; the archetype has to carry it.",
+      "role": "Software Engineer",
+      "text": "Eligibility: 7.0 CGPA, no standing arrears, 2027 batch, B.E/B.Tech only.\nSelection: online test followed by two technical rounds and an HR round.",
+      "requirements": []
+    },
+    {
+      "id": "cognizant_ace",
+      "note": "REAL. Testing/JD_Testing/, trimmed to the requirement-bearing sections.",
+      "role": "Ace Frontier Engineer",
+      "text": "Cognizant Ace Team Program\n\n© 2026-2027 Cognizant. All rights reserved.\n\nTechnologies & Skills\n\nPython, Java / .NET, JavaScript / TypeScript, React /\nAngular, REST APIs, SQL\n\nAI & LLM\n\nLLMs & Embeddings, RAG Pipelines, LangChain,\nLangGraph, CrewAI, AutoGen\n\n© 2026-2027 Cognizant. All rights reserved.\n\nCloud & DevOps\n\nAWS / Azure / GCP, Git, CI/CD pipelines, Containers\n\nEligibility criteria\n• Students graduating in 2027 with B.E/B. Tech/M.E/M. Tech degrees.\n• Students with standing arrears are NOT eligible to apply.\n\n© 2026-2027 Cognizant. All rights reserved.",
+      "requirements": [
+        "Python",
+        "Java / .NET",
+        "JavaScript / TypeScript",
+        "React / Angular",
+        "REST APIs",
+        "SQL",
+        "LLMs & Embeddings",
+        "RAG Pipelines",
+        "LangChain",
+        "LangGraph",
+        "CrewAI",
+        "AutoGen",
+        "AWS / Azure / GCP",
+        "Git",
+        "CI/CD pipelines",
+        "Containers"
+      ]
+    }
+  ],
+
+  "_disjunction_comment": [
+    "AC-2.4: disjunction detection accuracy >= 0.95. §10 asks for 30 real",
+    "strings; these are 30, drawn from the phrasings campus postings use.",
+    "",
+    "`parts` is empty where the string is NOT a disjunction — those cases are",
+    "half the value of the set, because splitting 'CI/CD' fabricates a skill",
+    "and fabricating is worse than missing."
+  ],
+
+  "disjunctions": [
+    { "text": "Java/Python/C++", "parts": ["Java", "Python", "C++"] },
+    { "text": "Java or Python", "parts": ["Java", "Python"] },
+    { "text": "either Java or Kotlin", "parts": ["Java", "Kotlin"] },
+    { "text": "Docker or Kubernetes", "parts": ["Docker", "Kubernetes"] },
+    { "text": "MySQL, PostgreSQL or Oracle", "parts": ["MySQL", "PostgreSQL", "Oracle"] },
+    { "text": "React or Angular", "parts": ["React", "Angular"] },
+    { "text": "AWS or Azure", "parts": ["AWS", "Azure"] },
+    { "text": "C++ or Java", "parts": ["C++", "Java"] },
+    { "text": "Python or R", "parts": ["Python", "R"] },
+    { "text": "Angular/React/Vue", "parts": ["Angular", "React", "Vue"] },
+    { "text": "MySQL/PostgreSQL", "parts": ["MySQL", "PostgreSQL"] },
+    { "text": "Spring or Django", "parts": ["Spring", "Django"] },
+    { "text": "TensorFlow or PyTorch", "parts": ["TensorFlow", "PyTorch"] },
+    { "text": "Jenkins or GitLab CI", "parts": ["Jenkins", "GitLab CI"] },
+    { "text": "Kotlin or Swift", "parts": ["Kotlin", "Swift"] },
+
+    { "text": "CI/CD", "parts": [] },
+    { "text": "TCP/IP", "parts": [] },
+    { "text": "CI/CD pipelines", "parts": [] },
+    { "text": "I/O", "parts": [] },
+    { "text": "OS/2", "parts": [] },
+    { "text": "A/B testing", "parts": [] },
+    { "text": "Node.js", "parts": [] },
+    { "text": "24/7 support", "parts": [] },
+    { "text": ".NET", "parts": [] },
+    { "text": "client/server architecture", "parts": [] },
+    { "text": "Transactions and ACID", "parts": [] },
+    { "text": "read/write throughput", "parts": [] },
+    { "text": "Python", "parts": [] },
+    { "text": "Data Structures", "parts": [] },
+    { "text": "REST APIs", "parts": [] }
+  ]
+}
