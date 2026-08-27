@@ -20,6 +20,8 @@
 
 import { useState } from "react";
 
+import { Link } from "react-router-dom";
+
 import { usePlan } from "../api";
 import {
   Empty,
@@ -152,6 +154,33 @@ export function PlanPanel({
           )}
         </div>
       )}
+
+      {/* On the real Cognizant brochure this is 72 of 73 requirements, which
+          makes it the headline rather than a footnote: a student looking at a
+          four-question plan needs to know it is four because the ontology is
+          missing, not because the job is small. */}
+      {plan.data &&
+        plan.data.unmeasurable.length > plan.data.allocations.length && (
+          <div className="mt-3 rounded-md border border-reported-line bg-reported-soft px-3 py-2">
+            <p className="text-sm text-ink">
+              <span className="font-medium">
+                Only {plan.data.allocations.length} of{" "}
+                {plan.data.allocations.length + plan.data.unmeasurable.length}{" "}
+                requirements can be tested at all.
+              </span>{" "}
+              The rest map to no concept in the ontology, so no question can
+              probe them and no score can be earned against them. That is a gap
+              in what we can measure, not in you &mdash; and it caps this
+              session however long you make it.
+            </p>
+            <Link
+              to="/deps"
+              className="provenance mt-1 inline-block hover:text-ink-soft"
+            >
+              what is down &rarr;
+            </Link>
+          </div>
+        )}
 
       {plan.data && plan.data.unmeasurable.length > 0 && (
         <p className="mt-2.5 text-xs text-ink-soft">

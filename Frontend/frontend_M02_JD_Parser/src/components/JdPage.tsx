@@ -22,6 +22,7 @@
  * score. `CoveragePanel` owns that.
  */
 
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useCoverage, useJd } from "../api";
@@ -182,9 +183,10 @@ export function JdPage() {
           </div>
         )}
 
-        {/* The spec's §5 structure, and why none of it is on screen. Kept
-            visible rather than in a backlog: a reader of this screen should
-            not have to guess whether "flat list" is the design or the state. */}
+        {/* Which passes read this posting, and what §5 still lacks. Kept on the
+            screen rather than in a backlog, because a reader looking at a thin
+            list should be able to tell "the posting says little" from "the
+            model was unavailable" without asking anybody. */}
         <p className="provenance mt-2">read by: {data.extracted_by}</p>
 
         <details className="mt-3 text-sm">
@@ -312,6 +314,21 @@ function rowsFor(
 }
 
 /**
+ * EC-2.2: *"Cap displayed at 8 by weight; all stored; plan uses top 12."*
+ *
+ * The real Cognizant brochure yields seventy-three requirements. Nobody reads
+ * seventy-three rows — and a list nobody reads might as well hold three, which
+ * is the failure this cap exists to prevent rather than cause.
+ *
+ * Applied per BAND, not overall. The bands are already an ordering that means
+ * something: a nice-to-have at the top of its own section is readable, and the
+ * same row at position sixty of one flat list is not. Everything beyond the cap
+ * is one click away and counted in the summary, so nothing is hidden — it is
+ * ranked.
+ */
+const SHOWN_PER_BAND = 8;
+
+/**
  * Strongest first. A student reading top-down reads the things that will
  * actually get asked before the things that might.
  */
@@ -360,7 +377,17 @@ function NecessityGroup({
 }) {
   const copy = NECESSITY_COPY[necessity];
   const share = requirements.reduce((sum, r) => sum + r.weight, 0);
-  const rows = rowsFor(requirements, groups);
+  const [showAll, setShowAll] = useState(false);
+
+  // Sorted by weight before the cap, so the eight shown are the eight that
+  // matter rather than the first eight the posting happened to write.
+  const ranked = [...requirements].sort((a, b) => b.weight - a.weight);
+  const rows = rowsFor(
+    showAll ? ranked : ranked.slice(0, SHOWN_PER_BAND),
+    groups,
+  );
+  const hidden =
+    requirements.length - Math.min(requirements.length, SHOWN_PER_BAND);
 
   return (
     <div>
@@ -373,7 +400,7 @@ function NecessityGroup({
           className="provenance shrink-0"
           title="Share of this posting's total weight — what fraction of the interview these should earn"
         >
-          {Math.round(share * 100)}% of the ask
+          {requirements.length} &middot; {Math.round(share * 100)}% of the ask
         </span>
       </div>
       <p className="mt-1 text-xs text-ink-faint">{copy.note}</p>
@@ -398,6 +425,26 @@ function NecessityGroup({
           )}
         </div>
       </Panel>
+
+      {hidden > 0 && !showAll && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-1.5 text-xs text-ink-faint hover:text-ink-soft"
+        >
+          {hidden} more, lower weighted &mdash; show{" "}
+          {hidden === 1 ? "it" : "them"}
+        </button>
+      )}
+      {showAll && hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="mt-1.5 text-xs text-ink-faint hover:text-ink-soft"
+        >
+          Show the top {SHOWN_PER_BAND} only
+        </button>
+      )}
     </div>
   );
 }
