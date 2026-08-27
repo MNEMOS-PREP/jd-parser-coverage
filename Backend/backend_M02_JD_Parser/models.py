@@ -86,6 +86,21 @@ class JobDescription(SQLModel, table=True):
     #: were too close to separate — both of which are answers, and different
     #: from each other. `archetype_confidence` is recorded either way, because
     #: "we looked and were not sure" is not the same as "we did not look".
+    #: How long this parse took, end to end, in milliseconds (FR-2.16).
+    #:
+    #: Stored on the row rather than logged, so p95 is a query over real
+    #: postings instead of a benchmark over invented ones. A benchmark measures
+    #: the machine it ran on; §11's budget is a claim about what students wait.
+    parse_ms: int = Field(default=0)
+
+    #: Per-stage milliseconds, keyed as §11 names them.
+    #:
+    #: Broken down because the budget is: normalise 0.1 s, extraction 4 s,
+    #: archetype 0.2 s, gap 0.3 s, plan 0.2 s. A single total says a parse was
+    #: slow; this says which stage to look at, and the answer is almost always
+    #: the model call — which is also the one stage that is optional.
+    stage_ms: dict = Field(default_factory=dict, sa_column=Column(JSON))
+
     #: `lexicon`, `lexicon+model`, or `lexicon (model: <reason>)`.
     #:
     #: Which passes actually ran, recorded per posting rather than inferred

@@ -1476,3 +1476,61 @@ def test_no_branches_named_is_empty_not_all_branches(client, m04):
 
     assert body["eligibility"]["allowed_branches"] == []
     assert body["eligibility"]["stated"] is True, "a CGPA cutoff is still a stated criterion"
+
+
+# ---------------------------------------------------------------------------
+#  FR-2.16 / AC-2.5 — the parse is timed
+# ---------------------------------------------------------------------------
+
+
+def test_a_parse_records_how_long_it_took(client, m04):
+    """§11 budgets a cold parse at 8 s and it was never timed.
+
+    Unknown is worse than missed: a missed budget is a bug report, an unknown
+    one is a blank space where everybody assumes it is fine.
+    """
+    body = _parsed(client, CACHED_JD)
+
+    assert body["parse_ms"] >= 0
+    assert body["stage_ms"], "no stage breakdown"
+    assert "normalise" in body["stage_ms"]
+    assert "extract" in body["stage_ms"]
+
+
+def test_performance_is_empty_before_anything_is_parsed(session, m04):
+    """Different from a zero, and the endpoint says so rather than showing one."""
+    from backend_M02_JD_Parser.app import app
+    from backend_M02_JD_Parser.router import get_db
+    from fastapi.testclient import TestClient
+
+    def override_get_db():
+        yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    fresh = TestClient(app, headers={"X-Role": "admin", "X-Candidate-Id": "test-admin"})
+    try:
+        assert fresh.get("/v1/performance").json() == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_performance_reports_p95_per_stage_against_the_budget(client, m04):
+    """Measured over stored rows rather than a benchmark script.
+
+    A benchmark measures the machine it ran on; §11's budget is a claim about
+    what a student waits for.
+    """
+    for i in range(3):
+        _parsed(client, f"Engineer {i}\n\nRequirements:\n- Python\n- SQL\n- Docker\n")
+
+    rows = client.get("/v1/performance").json()
+    by_stage = {r["stage"]: r for r in rows}
+
+    assert "total" in by_stage
+    assert by_stage["total"]["budget_ms"] == 8_000, "§11's cold-parse budget"
+    assert by_stage["total"]["samples"] >= 3
+    for row in rows:
+        # The sample count travels with every number, because a p95 over three
+        # parses is not a p95 and the reader has to be able to see that.
+        assert row["samples"] >= 1
+        assert row["within_budget"] == (row["p95_ms"] <= row["budget_ms"])

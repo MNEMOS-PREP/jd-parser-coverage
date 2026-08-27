@@ -11,7 +11,7 @@
 
 import { DependencyTable } from "@ai/core";
 
-import { useDeps, useHealth, useModuleStatus } from "../api";
+import { useDeps, useHealth, useModuleStatus, usePerformance } from "../api";
 import {
   Field,
   Panel,
@@ -23,6 +23,7 @@ import {
 
 export function DepsPage() {
   const deps = useDeps();
+  const perf = usePerformance();
   const health = useHealth();
   const status = useModuleStatus();
 
@@ -99,6 +100,65 @@ export function DepsPage() {
             </p>
           </Panel>
         )}
+      </Section>
+
+      {/* AC-2.5. §11 budgets a cold parse at 8 s and none of it was ever timed,
+          so the number was UNKNOWN — which is worse than missed. A missed
+          budget is a bug report; an unknown one is a blank space where
+          everybody assumes it is fine.
+
+          Measured over stored rows rather than a benchmark, because a
+          benchmark measures the machine it ran on and §11's budget is a claim
+          about what a student waits for. */}
+      <Section
+        label="How long a parse takes"
+        meta={
+          perf.data?.length
+            ? `p95 over ${perf.data[0].samples} parses`
+            : undefined
+        }
+      >
+        {perf.data && perf.data.length === 0 && (
+          <Panel className="px-4 py-3">
+            <p className="text-sm text-ink-soft">
+              Nothing parsed yet, so there is no p95. That is different from a
+              zero, and it is why this says so rather than showing one.
+            </p>
+          </Panel>
+        )}
+        {perf.data && perf.data.length > 0 && (
+          <Panel className="px-4 py-1">
+            <div className="divide-y divide-line">
+              {perf.data.map((stage) => (
+                <div
+                  key={stage.stage}
+                  className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2"
+                >
+                  <span className="text-sm text-ink">{stage.stage}</span>
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={
+                        stage.within_budget
+                          ? "text-sm text-confirmed"
+                          : "text-sm text-contested"
+                      }
+                    >
+                      {stage.p95_ms} ms
+                    </span>
+                    <span className="provenance">
+                      budget {stage.budget_ms} ms · {stage.samples}{" "}
+                      {stage.samples === 1 ? "parse" : "parses"}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
+        <p className="mt-2 text-xs text-ink-faint">
+          A p95 over a handful of parses is not a p95. The sample count is shown
+          for every row so the number can be read with the weight it has earned.
+        </p>
       </Section>
     </>
   );

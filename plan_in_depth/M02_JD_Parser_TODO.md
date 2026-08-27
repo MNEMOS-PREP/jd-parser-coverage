@@ -105,7 +105,7 @@ Spec §4. This is the authoritative list; §3 below is only the inter-module hal
 | FR-2.13 | ⬜ | No M15 company-brief enrichment. **Blocked** — M15 not wired. |
 | FR-2.14 | ✅ | **Landed 2026-08-27.** `GET /v1/archetypes` and `POST /v1/jds/from-role`. §2.3's door 3 is real: a student with no drive scheduled picks a role and gets a requirement set and a coverage plan. `raw_text` is EMPTY rather than a synthesised posting — storing a plausible JD would make the read-back quote sentences no company ever published. Cached like a pasted JD, because two students picking "SDE" share one set |
 | FR-2.15 | ✅ | **Landed 2026-08-27.** M02 reads M01. `GET /v1/jds/{id}/match/{candidate}` says *"you have 7.2, cutoff is 7.5"* — and refuses to say it whenever the scales differ: a percentage or a 4-point GPA against a 10-point cutoff is `scale_mismatch`, not a conversion. No grade at all is `unknown`, never `fails`. Identity is forwarded to M01 rather than held as a service token, so M02 can only read resumes its own caller was already allowed to see. |
-| FR-2.16 | ⬜ | **p95 never measured.** §11 budgets ≤ 8 s cold and ≤ 1 s cached. Nothing is timed, so the number is unknown rather than met or missed. |
+| FR-2.16 | ✅ | **Landed 2026-08-27.** Every parse records `parse_ms` and a per-stage `stage_ms`, and `GET /v1/performance` reports p95 per stage against §11's budget. Measured over STORED ROWS rather than a benchmark script — a benchmark measures the machine it ran on, and §11's budget is a claim about what a student waits for. Empty until something is parsed, which is the honest answer before there is one |
 
 ---
 
@@ -119,7 +119,7 @@ Spec §13. A gate is release-blocking; the rest are tracked.
 | AC-2.2 **[GATE]** | 🟡 | `not_measured` never renders as a number — `MasteryBar` has no bar for it and `coverage_score` is `null`, never `0.0`, when nothing was measured. **The UI test the gate names does not exist**; this is asserted on the backend only. |
 | AC-2.3 | 🟡 | **0.857 on 2026-08-27** (precision 0.891, recall 0.826), past §13's 0.85 — but the target is a claim about REAL postings and 11 of the 12 documents are synthetic, so `MEASURES_REAL_WORLD` stays False. What is true: the parser scores 0.857 on the shapes the spec names. The floor went 0.55 → 0.72 → 0.82 in one day as the corpus named bugs and the fixes landed. 7 of 12 documents score 1.000, including the real one. §10 asks for 25 documents; there are 12 |
 | AC-2.4 | 🟡 | **Measured 2026-08-27: 0.90** over §10's 30 strings. Half are NEGATIVE cases — "CI/CD", "TCP/IP", "A/B testing", "24/7 support" — because splitting one fabricates a skill |
-| AC-2.5 | ⬜ | p95 cold parse ≤ 8 s. Never measured — see FR-2.16. |
+| AC-2.5 | 🟡 | **Measurable 2026-08-27** — `GET /v1/performance`, p95 per stage with the sample count beside it. Whether the 8 s budget is MET is a question about production traffic; on the golden documents every stage is far inside it, and a p95 over a handful of parses is not a p95 |
 | AC-2.6 | ✅ | Plans differ ≥ 30% between students on one JD. `test_two_students_on_one_posting_get_different_plans` asserts it directionally: the student weak on SQL is asked about SQL more, and the reverse for DP. |
 | AC-2.7 | ⬜ | Drive-chip vs manual-paste ratio. Nothing to track — no chips. |
 | AC-2.8 | ⬜ | "The interview matched the JD" ≥ 80%. Needs a post-session survey and a session to survey. |

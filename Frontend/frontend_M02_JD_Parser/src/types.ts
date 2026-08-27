@@ -203,6 +203,10 @@ export interface JobDescription {
    * and the other did not.
    */
   extracted_by: string;
+  /** How long this parse took end to end, in ms (FR-2.16). */
+  parse_ms: number;
+  /** Per-stage milliseconds, keyed as §11 names the stages. */
+  stage_ms: Record<string, number>;
   /**
    * Instruction-shaped spans neutralised in this posting (EC-2.13). Almost
    * always zero.
@@ -442,4 +446,14 @@ export interface EffectiveRequirements {
   requirements: Requirement[];
   requirement_groups: RequirementGroup[];
   edit_count: number;
+}
+
+/** p95 for one stage against the budget §11 sets for it (AC-2.5). */
+export interface StagePerf {
+  stage: string;
+  p95_ms: number;
+  budget_ms: number;
+  within_budget: boolean;
+  /** Rows behind the number. A p95 over three parses is not a p95. */
+  samples: number;
 }

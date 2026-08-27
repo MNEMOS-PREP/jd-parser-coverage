@@ -32,6 +32,7 @@ import type {
   RequirementEditIn,
   MatchReport,
   ModuleStatus,
+  StagePerf,
 } from "./types";
 
 export const m02Keys = {
@@ -39,6 +40,7 @@ export const m02Keys = {
   status: ["m02", "status"] as const,
   deps: ["m02", "deps"] as const,
   archetypes: ["m02", "archetypes"] as const,
+  performance: ["m02", "performance"] as const,
   jd: (jdId: string) => ["m02", "jd", jdId] as const,
   coverage: (jdId: string, candidateId: string) =>
     ["m02", "coverage", jdId, candidateId] as const,
@@ -331,5 +333,19 @@ export function useResetRequirementEdits(
       qc.invalidateQueries({ queryKey: ["m02", "plan"] });
       qc.invalidateQueries({ queryKey: ["m02", "coverage"] });
     },
+  });
+}
+
+/**
+ * p95 per stage, over what this instance has actually parsed (AC-2.5).
+ *
+ * Empty until something has been parsed, and that is the honest answer to
+ * "what is your p95" before there is one — different from a zero.
+ */
+export function usePerformance() {
+  return useQuery({
+    queryKey: m02Keys.performance,
+    retry: false,
+    queryFn: () => api.get<StagePerf[]>("/v1/performance"),
   });
 }

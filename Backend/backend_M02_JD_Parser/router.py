@@ -13,7 +13,9 @@ narrows the SCOPE of what we show, never the quality, and never silently):
 import hashlib
 import json
 import logging
+import math
 import re
+import time
 import urllib.request
 import uuid
 from functools import lru_cache
@@ -127,6 +129,20 @@ NOT_MEASURED_SEVERITY = 0.6
 #: and reading it into memory before finding that out is how an upload endpoint
 #: becomes a way to exhaust the server.
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
+#: §11's budget, in milliseconds, keyed as the stages are timed.
+#:
+#: `model` is §11's "extraction (mid tier)" 4 s. It is the only stage that is
+#: optional and the only one that leaves this machine, which is why it is worth
+#: seeing on its own: a slow parse is almost always a slow model call, and a
+#: deployment with no key never pays it.
+STAGE_BUDGET_MS = {
+    "total": 8_000,
+    "normalise": 100,
+    "extract": 500,
+    "model": 4_000,
+    "resolve": 500,
+}
 
 
 @lru_cache(maxsize=1)
@@ -277,6 +293,13 @@ def parse_jd(
     #
     #  Hashed AFTER normalising, so the same posting forwarded twice with
     #  different mail furniture is one cache entry rather than two.
+    started = time.perf_counter()
+    stage_ms: dict[str, int] = {}
+
+    def _mark(name: str, since: float) -> float:
+        stage_ms[name] = int((time.perf_counter() - since) * 1000)
+        return time.perf_counter()
+
     text = normalise(payload.raw_text)
     if too_thin(payload.raw_text, text):
         # EC-2.4. Not an error — the upload worked, there is just no job in it.
@@ -310,11 +333,15 @@ def parse_jd(
             ", ".join(sorted({f.kind for f in findings})),
         )
 
+    mark = _mark("normalise", started)
+
     digest = content_digest(payload.company_name, payload.role_title, text)
     cached = session.exec(
         select(JobDescription).where(JobDescription.content_sha256 == digest)
     ).first()
     if cached is not None:
+        # A cache hit is the §11 "cached JD ≤ 1 s" path, and it is worth timing
+        # separately: it is the number sixty students out of sixty-one get.
         response.status_code = status.HTTP_200_OK
         return cached
 
@@ -344,6 +371,7 @@ def parse_jd(
     # still an arrears rule.
     role_block = for_requirements(text)
     surface_forms = extract_surface_forms(role_block)
+    mark = _mark("extract", mark)
 
     # ------------------------------------------------------------------
     #  §6.2 — the model reads what no regex can, and the document checks it
@@ -363,6 +391,7 @@ def parse_jd(
     #  Runs once per unique posting, because the parse is cached by content
     #  hash (FR-2.12). Sixty students on one drive pay for one call.
     proposed, model_reason = propose(role_block)
+    mark = _mark("model", mark)
     extracted_by = "lexicon"
     if proposed:
         surface_forms = merge(surface_forms, proposed)
@@ -488,6 +517,9 @@ def parse_jd(
         inferred=inferred,
     )
 
+    stage_ms["archetype"] = stage_ms.get("archetype", 0)
+    mark = _mark("resolve", mark)
+
     jd = JobDescription(
         company_name=payload.company_name,
         role_title=payload.role_title,
@@ -513,6 +545,8 @@ def parse_jd(
         # label that turned out to be in the document is stated, not inferred.
         injections_removed=len(findings),
         extracted_by=extracted_by,
+        parse_ms=int((time.perf_counter() - started) * 1000),
+        stage_ms=stage_ms,
         inferred_count=sum(1 for r in requirement_set.requirements if r.source == "archetype"),
     )
     session.add(jd)
@@ -1188,3 +1222,82 @@ def reset_requirement_edits(
         "edit_count": edit_count,
         "removed": len(rows),
     }
+
+
+class StagePerf(BaseModel):
+    """p95 for one stage, against the budget §11 sets for it."""
+
+    stage: str
+    p95_ms: int
+    budget_ms: int
+    within_budget: bool
+    samples: int
+
+
+@router.get("/performance", response_model=list[StagePerf], tags=["meta"])
+def performance(session: Session = Depends(get_db)):
+    """p95 per stage, over the postings this instance has actually parsed
+    (FR-2.16, AC-2.5).
+
+    §11 budgets a cold parse at 8 s and names a figure per stage. None of it
+    was ever timed, so the number was UNKNOWN — which is worse than missed. A
+    missed budget is a bug report; an unknown one is a blank space where
+    everybody assumes it is fine.
+
+    Measured over stored rows rather than a benchmark script, for the same
+    reason `golden.py` scores real documents: a benchmark measures the machine
+    it ran on, and §11's budget is a claim about what a student waits for.
+
+    Returns an empty list until something has been parsed. That is the honest
+    answer to "what is your p95" before there is one, and it is different from
+    a zero.
+    """
+    rows = list(session.exec(select(JobDescription)).all())
+    if not rows:
+        return []
+
+    def _p95(values: list[int]) -> int:
+        if not values:
+            return 0
+        ordered = sorted(values)
+        # Nearest-rank, which needs no interpolation and is right for the small
+        # samples this will have long before it has large ones.
+        index = max(0, math.ceil(0.95 * len(ordered)) - 1)
+        return ordered[index]
+
+    # A row is TIMED if it carries a stage breakdown, not if its total is
+    # non-zero. Filtering on `parse_ms` treats a sub-millisecond parse as
+    # unmeasured — which is backwards, and made this endpoint's own test fail
+    # one run in three depending on how fast the machine was that minute.
+    timed = [r for r in rows if r.stage_ms]
+    if not timed:
+        return []
+
+    totals = [r.parse_ms for r in timed]
+    total_p95 = _p95(totals)
+    out = [
+        StagePerf(
+            stage="total",
+            p95_ms=total_p95,
+            budget_ms=STAGE_BUDGET_MS["total"],
+            within_budget=total_p95 <= STAGE_BUDGET_MS["total"],
+            samples=len(timed),
+        )
+    ]
+    for stage, budget in STAGE_BUDGET_MS.items():
+        if stage == "total":
+            continue
+        values = [r.stage_ms[stage] for r in timed if stage in r.stage_ms]
+        if not values:
+            continue
+        p95 = _p95(values)
+        out.append(
+            StagePerf(
+                stage=stage,
+                p95_ms=p95,
+                budget_ms=budget,
+                within_budget=p95 <= budget,
+                samples=len(values),
+            )
+        )
+    return out
