@@ -43,7 +43,7 @@ from backend_M02_JD_Parser.archetypes import match as match_archetype
 from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
 from backend_M02_JD_Parser.match import MatchReport, build_match
 from backend_M02_JD_Parser.models import JobDescription
-from backend_M02_JD_Parser.normalise import normalise, too_thin
+from backend_M02_JD_Parser.normalise import for_requirements, normalise, too_thin
 from backend_M02_JD_Parser.plan import CoveragePlan, build_plan
 from backend_M02_JD_Parser.propose import merge, propose
 from backend_M02_JD_Parser.safety import neutralise, normalise_homoglyphs, scan
@@ -336,7 +336,13 @@ def parse_jd(
     #
     #  See extract.py.
     # ------------------------------------------------------------------
-    surface_forms = extract_surface_forms(text)
+    # The label list comes from the document WITHOUT its administrative block;
+    # every span is still located against `text`, which is what gets stored.
+    # See `normalise.for_requirements` — eligibility deliberately reads the
+    # fuller version, because an arrears rule inside a registration section is
+    # still an arrears rule.
+    role_block = for_requirements(text)
+    surface_forms = extract_surface_forms(role_block)
 
     # ------------------------------------------------------------------
     #  §6.2 — the model reads what no regex can, and the document checks it
@@ -355,7 +361,7 @@ def parse_jd(
     #
     #  Runs once per unique posting, because the parse is cached by content
     #  hash (FR-2.12). Sixty students on one drive pay for one call.
-    proposed, model_reason = propose(text)
+    proposed, model_reason = propose(role_block)
     extracted_by = "lexicon"
     if proposed:
         surface_forms = merge(surface_forms, proposed)
@@ -367,7 +373,7 @@ def parse_jd(
 
     # Concepts named in prose rather than enumerated. Ambiguous one-word
     # aliases are excluded there — that is what closes the "solid" hole.
-    prose_hits = scan_prose(text, concepts)
+    prose_hits = scan_prose(role_block, concepts)
 
     labels: list[str] = []
     seen: set[str] = set()

@@ -84,6 +84,102 @@ _BOILERPLATE_LINE = re.compile(
     re.IGNORECASE,
 )
 
+#: Headings that open an ADMINISTRATIVE region (§6.1).
+#:
+#: What follows one of these is about the PROCESS — documents to bring, how to
+#: register, what happens on the day — rather than about the job. A student
+#: needs it; a requirement extractor must not read it, because it is written in
+#: exactly the vocabulary a requirements block uses ("mandatory", "required",
+#: "must", "your") and no line-level filter can tell them apart.
+_ADMIN_HEADING = re.compile(
+    r"^\s*(?:"
+    r"(?:mandatory|required|important)\s+(?:documents?|notes?|information|points?)\b.*"
+    r"|documents?\s+(?:required|to\s+(?:bring|carry|submit))\b.*"
+    r"|(?:registration|application|selection|interview|hiring|recruitment)\s+"
+    r"(?:process|procedure|steps?|details?|guidelines?)\b.*"
+    r"|how\s+to\s+(?:apply|register)\b.*"
+    r"|(?:terms|conditions|disclaimer|faqs?|frequently\s+asked)\b.*"
+    r"|(?:point|things?)\s+to\s+(?:note|remember)\b.*"
+    r"|contact\s+(?:us|details?|information)\b.*"
+    r"|about\s+(?:us|the\s+company)\b.*"
+    r"|note\s*:.*"
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+#: Headings that CLOSE an administrative region by starting a real one.
+#:
+#: Without this, one "Note:" near the top would swallow the rest of a posting.
+#: A region ends at the next heading that is about the job or the candidate.
+_CONTENT_HEADING = re.compile(
+    r"^\s*(?:"
+    r"(?:job|role)\s+(?:description|profile|summary|details?)\b.*"
+    r"|(?:key\s+)?(?:responsibilities|requirements?|qualifications?)\b.*"
+    r"|(?:technical\s+|required\s+|desired\s+|preferred\s+|key\s+|core\s+)?skills?\b.*"
+    r"|(?:technologies|tech\s+stack|tools?|languages|frameworks)\b.*"
+    r"|eligibility\b.*"
+    r"|what\s+(?:you|we)\b.*"
+    r"|nice\s+to\s+have\b.*"
+    r"|good\s+to\s+have\b.*"
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+#: A line short enough and bare enough to BE a heading.
+#:
+#: Structural, so a region cannot be closed by a sentence that happens to
+#: mention skills. Five words, no sentence-ending punctuation — the same shape
+#: `extract._looks_like_a_heading` uses, for the same reason.
+_HEADING_SHAPED = 6
+
+
+def _is_heading(line: str) -> bool:
+    stripped = line.strip().rstrip(":")
+    return bool(
+        stripped
+        and not stripped.endswith((".", "!", "?"))
+        and len(stripped.split()) <= _HEADING_SHAPED
+    )
+
+
+def strip_administrative(text: str) -> str:
+    """Remove the process, keep the job (§6.1).
+
+    An administrative heading opens a region; the next content heading closes
+    it. Anything not heading-shaped cannot close one, so a checklist that runs
+    for thirty lines stays inside its region for all thirty.
+
+    On the real Cognizant brochure this removes the documents checklist that
+    was supplying six of the thirteen MUST-HAVE requirements a student saw,
+    including "father's" and "size photograph".
+    """
+    kept: list[str] = []
+    in_admin = False
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            kept.append("")
+            continue
+
+        if _ADMIN_HEADING.match(line):
+            in_admin = True
+            continue
+
+        if in_admin:
+            # Only a heading can end the region, and only a heading that is
+            # about the job. A sentence inside the checklist that mentions
+            # "skills" must not reopen extraction.
+            if _is_heading(line) and _CONTENT_HEADING.match(line):
+                in_admin = False
+            else:
+                continue
+
+        kept.append(raw)
+
+    return "\n".join(kept)
+
+
 #: A line repeated this many times in one document is furniture.
 #:
 #: The structural half of the stripper, and the half that survives the
@@ -214,11 +310,29 @@ def rejoin_layout(text: str) -> str:
 def normalise(text: str) -> str:
     """§6.1's whole stage: layout first, then furniture.
 
-    Order matters. Stripping first would leave a lone bullet whose item was a
-    footer, and rejoining first means a boilerplate line arrives whole and gets
-    matched as one.
+    Order matters, three times over. Rejoining first means a boilerplate line
+    arrives whole and gets matched as one, instead of as two halves that match
+    nothing. Stripping boilerplate before sections means a page footer inside an
+    administrative block does not have to be recognised twice. And the
+    administrative pass runs LAST because it works on headings, which only exist
+    once the layout damage is repaired.
     """
     return strip_boilerplate(rejoin_layout(text)).strip()
+
+
+def for_requirements(text: str) -> str:
+    """The same document with the administrative block removed as well.
+
+    Used ONLY to decide which labels exist. Spans are always located against
+    the stored text, so this never moves an offset — it only stops a documents
+    checklist from contributing requirements.
+
+    Kept separate from `normalise` because eligibility must read the whole
+    posting: a CGPA rule, a batch, an arrears bar or a bond can appear inside
+    the registration section, and each is a hard filter that must not be lost
+    to a heuristic about headings.
+    """
+    return strip_administrative(text).strip()
 
 
 def too_thin(original: str, normalised: str) -> bool:
