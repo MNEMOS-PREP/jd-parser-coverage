@@ -45,6 +45,7 @@ from backend_M02_JD_Parser.match import MatchReport, build_match
 from backend_M02_JD_Parser.models import JobDescription
 from backend_M02_JD_Parser.normalise import normalise, too_thin
 from backend_M02_JD_Parser.plan import CoveragePlan, build_plan
+from backend_M02_JD_Parser.propose import merge, propose
 from backend_M02_JD_Parser.safety import neutralise, normalise_homoglyphs, scan
 
 from .extract import (
@@ -337,6 +338,33 @@ def parse_jd(
     # ------------------------------------------------------------------
     surface_forms = extract_surface_forms(text)
 
+    # ------------------------------------------------------------------
+    #  §6.2 — the model reads what no regex can, and the document checks it
+    # ------------------------------------------------------------------
+    #  Not a replacement for the lexicon: a union with it. The two fail in
+    #  opposite directions, which is the whole reason to run both —
+    #
+    #      the lexicon   misses prose, never invents
+    #      the model     reads prose, would invent if allowed to
+    #
+    #  Every proposal must verbatim-resolve in this document or it is dropped
+    #  (see `propose.py`), so the model can only point AT the posting. On the
+    #  golden corpus the union moves recall 0.826 -> 0.957, and the one case
+    #  the lexicon cannot do at all — a requirements paragraph with no heading,
+    #  no bullet and no delimiter pattern — goes 0.000 -> 1.000.
+    #
+    #  Runs once per unique posting, because the parse is cached by content
+    #  hash (FR-2.12). Sixty students on one drive pay for one call.
+    proposed, model_reason = propose(text)
+    extracted_by = "lexicon"
+    if proposed:
+        surface_forms = merge(surface_forms, proposed)
+        extracted_by = "lexicon+model"
+    elif model_reason:
+        # Named, not silent. "Why is this posting's list thin?" should be
+        # answerable from the row rather than from the logs.
+        extracted_by = f"lexicon (model: {model_reason})"
+
     # Concepts named in prose rather than enumerated. Ambiguous one-word
     # aliases are excluded there — that is what closes the "solid" hole.
     prose_hits = scan_prose(text, concepts)
@@ -477,6 +505,7 @@ def parse_jd(
         # Counted from the RESULT, not from what was suggested: a suggested
         # label that turned out to be in the document is stated, not inferred.
         injections_removed=len(findings),
+        extracted_by=extracted_by,
         inferred_count=sum(1 for r in requirement_set.requirements if r.source == "archetype"),
     )
     session.add(jd)
@@ -947,6 +976,7 @@ def parse_from_role(
         concept_source=concept_source,
         unresolved_skills=unresolved,
         scanned_against=scanned_against,
+        extracted_by="archetype",
         role_archetype=archetype.id,
         # Chosen, not inferred. A student saying "I am preparing for an SDE
         # role" is not a match we made and were 0.62 sure of.

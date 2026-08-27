@@ -765,7 +765,27 @@ def requirement_pattern(label: str) -> re.Pattern[str]:
     """
     body = r"\s+".join(re.escape(token) for token in label.split())
     body = body.replace(r"\-", r"-\s*")
-    return re.compile(r"\b" + body + r"\b", re.IGNORECASE)
+    # `\b` is not enough at either end, because a technology's name can BEGIN
+    # or END with punctuation and `\b` treats punctuation as a boundary.
+    #
+    # ".NET" contains "NET" with a word boundary in front of the N — so
+    # `requirement_pattern("NET")` matches inside ".NET" and a label of "NET"
+    # resolves to a span that is really part of another name. A model
+    # normalising ".NET" to "NET" produced exactly that, and the span check
+    # that is supposed to keep proposals honest waved it through.
+    #
+    # Same lesson as `drop_redundant`'s substring test, which deleted "NoSQL"
+    # when "SQL" resolved: a boundary between two word characters is not the
+    # only kind that matters. `.`, `+`, `#` and `/` are all parts of real
+    # names — .NET, C++, C#, CI/CD — so a match with one of them touching it
+    # is a match inside a longer name.
+    return re.compile(
+        # The trailing slash rule is about SPACING, not about the character.
+        # "CI/CD" is one name and "React / Angular" is two, and the only thing
+        # separating them is whether the slash is touching both sides.
+        r"(?<![\w.+#/-])" + body + r"(?![\w+#]|\.\w|/\w)",
+        re.IGNORECASE,
+    )
 
 
 # ---------------------------------------------------------------------------

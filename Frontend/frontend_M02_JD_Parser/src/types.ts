@@ -175,6 +175,16 @@ export interface JobDescription {
   /** How many requirements came from the archetype rather than the posting. */
   inferred_count: number;
   /**
+   * Which extraction passes actually ran: `lexicon`, `lexicon+model`,
+   * `lexicon (model: <reason>)`, or `archetype` for a role-only set.
+   *
+   * Recorded per posting rather than inferred from config, because §6.2 runs
+   * both passes and Rule 2 means either can be absent without an error — and
+   * two students comparing thin lists need to see that one parse had a model
+   * and the other did not.
+   */
+  extracted_by: string;
+  /**
    * Instruction-shaped spans neutralised in this posting (EC-2.13). Almost
    * always zero.
    *

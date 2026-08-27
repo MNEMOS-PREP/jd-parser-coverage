@@ -185,6 +185,8 @@ export function JdPage() {
         {/* The spec's §5 structure, and why none of it is on screen. Kept
             visible rather than in a backlog: a reader of this screen should
             not have to guess whether "flat list" is the design or the state. */}
+        <p className="provenance mt-2">read by: {data.extracted_by}</p>
+
         <details className="mt-3 text-sm">
           <summary className="cursor-pointer text-xs text-ink-faint hover:text-ink-soft">
             What is still missing here

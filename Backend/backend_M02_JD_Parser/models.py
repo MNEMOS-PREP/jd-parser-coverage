@@ -86,6 +86,14 @@ class JobDescription(SQLModel, table=True):
     #: were too close to separate — both of which are answers, and different
     #: from each other. `archetype_confidence` is recorded either way, because
     #: "we looked and were not sure" is not the same as "we did not look".
+    #: `lexicon`, `lexicon+model`, or `lexicon (model: <reason>)`.
+    #:
+    #: Which passes actually ran, recorded per posting rather than inferred
+    #: from a config file. Two students comparing thin lists need to be able to
+    #: see that one parse had a model and the other did not — §6.2 runs both
+    #: and merges, and Rule 2 means either can be absent without an error.
+    extracted_by: str = Field(default="lexicon")
+
     #: How many instruction-shaped spans were neutralised in this posting
     #: (EC-2.13). Almost always zero.
     #:
