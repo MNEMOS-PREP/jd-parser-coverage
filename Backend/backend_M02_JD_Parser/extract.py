@@ -1,17 +1,35 @@
 """Surface forms: what the document actually says, before anything resolves it.
 
-── Written twice, on purpose, for now ──────────────────────────────────────────
+── Not a copy of M01's any more, and the difference is measured ────────────────
 
-This file is byte-identical to M01's `extract.py`. It belongs in
-`ai_core.concepts`, whose own docstring already names both callers - "M01 maps
-resume surface forms to concept ids, M02 maps JD requirements to concept ids" -
-and says the normalisation "has to be identical on both sides of that call".
+This file used to say it was "byte-identical to M01's `extract.py`". As of
+2026-08-27 that is flatly untrue and worth correcting rather than leaving as a
+comment nobody rechecks: M01's is 419 lines and this is 1,563.
 
-It is not there yet because `ai_core` is pinned by git tag in six modules, so
-moving it means a release, a tag and six reinstalls, and because this platform
-promotes a contract to core AFTER it has been written twice rather than before.
-This is the second writing. It is now due, and it is the next Platform_Core
-bump.
+Compared function by function, ignoring docstrings:
+
+    IDENTICAL (6)   _clean, _split_conjunctions, drop_redundant,
+                    _contains_phrase, prose_safe_alias, scan_prose
+    DIVERGED  (3)   _acceptable, _list_lines, extract_surface_forms
+    HERE ONLY (22)  SourceSpan, Requirement, RequirementGroup,
+                    EligibilityCriteria, the weighting, the disjunction
+                    folding, the classifier hooks, …
+
+The divergence is deliberate. M02 treats a bullet as an enumeration signal
+whatever the line's length and M01 does not, because under a resume's SKILLS
+heading a long undelimited line usually IS prose and under a JD's it usually is
+not. Forcing those two to share `_list_lines` would make one of them wrong.
+
+So the six identical functions are the real `ai_core` candidates — about a
+hundred lines, all of them pure text handling with no module-specific
+judgement in them. The other twenty-five are not shared code and moving them
+would produce a core module so parameterised it is not shared code either.
+
+That promotion is still due. The cost of not doing it is measured rather than
+predicted: `drop_redundant`'s substring bug and `_split_conjunctions`' length
+cap were both fixed twice, in two repositories, on 2026-08-27. `_contains_phrase`
+exists in both today and is behaviourally identical in both — which is exactly
+the state that quietly stops being true.
 
 ── The bug this file exists to fix ─────────────────────────────────────────────
 

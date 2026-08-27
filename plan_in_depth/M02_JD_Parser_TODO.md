@@ -202,12 +202,30 @@ each is listed so it is not mistaken for an oversight.
 
 ## 8. Known debt
 
-- **`extract.py` is a copy of M01's.** Both are ~1,200 lines and diverging: M02
-  treats a bullet as an enumeration signal whatever its length and M01
-  deliberately does not. The shared half belongs in `ai_core.concepts`, whose
-  own docstring already names both callers. Two bugs found on 2026-08-27 had to
-  be fixed twice, in two repos, on the same day — that is the cost, and it will
-  recur.
+- **The `ai_core` promotion, now measured rather than asserted.** `extract.py`
+  is no longer "a copy of M01's" — M01's is 419 lines and M02's is 1,563.
+  Compared function by function, ignoring docstrings:
+
+      IDENTICAL (6)   `_clean`, `_split_conjunctions`, `drop_redundant`,
+                      `_contains_phrase`, `prose_safe_alias`, `scan_prose`
+      DIVERGED  (3)   `_acceptable`, `_list_lines`, `extract_surface_forms`
+      M02 ONLY  (22)  the §5 types, weighting, disjunction folding, …
+
+  The divergence is deliberate: M02 treats a bullet as an enumeration signal
+  whatever the line's length and M01 does not, because a long undelimited line
+  under a resume's SKILLS heading usually IS prose. Forcing them to share
+  `_list_lines` would make one of them wrong.
+
+  So the promotion is **those six functions, about a hundred lines** — pure text
+  handling with no module-specific judgement — and not the file. `safety.py` is
+  the same shape of case: near-identical, with one deliberate difference
+  (`persona_switch` is tighter here, because a JD says "act as" in earnest).
+
+  The cost of waiting is measured: `drop_redundant`'s substring bug and
+  `_split_conjunctions`' length cap were both fixed twice, in two repositories,
+  on 2026-08-27. **Not attempted in that session** — a core release retags a
+  dependency pinned across six modules and has a four-site version-parity test
+  behind it, which deserves its own session rather than the tail of another.
 - **The offline concept table holds five entries.** With M04 down the module is
   honest and nearly useless. Not wrong, but the degraded path is much thinner
   than "degraded" suggests.
