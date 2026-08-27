@@ -238,5 +238,8 @@ def test_a_requirement_nothing_can_measure_gets_no_questions(client, m04_mastery
     plan = _plan(client, jd_id, uuid.uuid4(), minutes=45)
     allocated = {a["requirement_text"] for a in plan["allocations"]}
 
-    assert "A go-getter attitude" not in allocated
-    assert "A go-getter attitude" in plan["unmeasurable"]
+    # "go-getter attitude", not "A go-getter attitude": the leading article is
+    # peeled now, which is what makes the label the thing rather than a phrase
+    # about the thing.
+    assert "go-getter attitude" not in allocated
+    assert "go-getter attitude" in plan["unmeasurable"]

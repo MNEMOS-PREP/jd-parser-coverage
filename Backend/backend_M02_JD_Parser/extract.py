@@ -209,7 +209,17 @@ _LEADING_NOISE = re.compile(
     r"comfortable\s+with|fluent\s+in|grasp\s+of|"
     # "programming skills in Java", "coding skills with Python". The run-up is
     # about the student's relationship to the thing; the thing is the label.
-    r"(?:\w+\s+)?skills?\s+(?:in|with)|(?:\w+\s+)?background\s+(?:in|with))\s+",
+    r"(?:\w+\s+)?skills?\s+(?:in|with)|(?:\w+\s+)?background\s+(?:in|with)|"
+    # "Must be a team player", "Should have a go-getter attitude", "Ability to
+    # work in teams". The claim is the noun at the end; everything before it
+    # describes the student's relationship to it, and `necessity` already
+    # carries that separately.
+    r"must\s+be(?:\s+an?)?|should\s+be(?:\s+an?)?|must\s+have(?:\s+an?)?|"
+    r"should\s+have(?:\s+an?)?|ability\s+to|able\s+to|willing(?:ness)?\s+to|"
+    r"any\s+one\s+of|at\s+least\s+one\s+of|"
+    # A bare article last, because `_clean` peels one layer per pass and "A
+    # go-getter attitude" only reaches this once nothing else matches.
+    r"an?|the)\s+",
     re.IGNORECASE,
 )
 
@@ -244,6 +254,23 @@ _ELIGIBILITY = re.compile(
     # heading long before it reaches here. Word-anchored, so "FinTech" is
     # untouched.
     r"\btech\b",
+    re.IGNORECASE,
+)
+
+#: A run of engineering branch codes: "CSE/IT/ECE", "CSE, IT and ECE".
+#:
+#: This survived as a REQUIREMENT called "CSE/IT/ECE" — a skill nobody has and
+#: no ontology holds, sitting in the unmapped queue for ever. The codes are
+#: spelled out here rather than reusing `_BRANCHES` because that table is
+#: defined with the eligibility parser at the bottom of this file, and
+#: `_acceptable` runs long before it.
+_BRANCH_RUN = re.compile(
+    r"^(?:CSE|IT|ISE|IS|ECE|EEE|EIE|MECH|CIVIL|AIDS|AIML|CSBS|MCA|BCA)"
+    r"(?:\s*[/,&]\s*|\s+and\s+|\s+or\s+)"
+    r"(?:CSE|IT|ISE|IS|ECE|EEE|EIE|MECH|CIVIL|AIDS|AIML|CSBS|MCA|BCA)"
+    r"(?:(?:\s*[/,&]\s*|\s+and\s+|\s+or\s+)"
+    r"(?:CSE|IT|ISE|IS|ECE|EEE|EIE|MECH|CIVIL|AIDS|AIML|CSBS|MCA|BCA))*"
+    r"\s*(?:only|branches?|students?)?$",
     re.IGNORECASE,
 )
 
@@ -298,6 +325,8 @@ def _acceptable(label: str) -> bool:
     if normalise_alias(label) in _NOISE_FORMS:
         return False
     if _ELIGIBILITY.search(label):
+        return False
+    if _BRANCH_RUN.match(label.strip()):
         return False
     words = label.split()
     if not words or len(words) > MAX_WORDS:

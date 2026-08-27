@@ -20,21 +20,30 @@ from __future__ import annotations
 import pytest
 from backend_M02_JD_Parser import golden
 from backend_M02_JD_Parser.archetypes import match as match_archetype
-from backend_M02_JD_Parser.extract import disjunction_parts, extract_surface_forms
+from backend_M02_JD_Parser.extract import (
+    disjunction_parts,
+    drop_redundant,
+    extract_surface_forms,
+)
 from backend_M02_JD_Parser.normalise import normalise
 
 #: Where extraction stands as of 2026-08-27, rounded down.
 #:
-#: Raised from 0.55 the same day. The corpus was committed at 0.581, named four
-#: bugs within an hour, and the fixes took it to 0.761 — which is the ratchet
-#: working, and the reason the floor moves with it rather than staying where it
-#: was set.
+#: 0.55 -> 0.72 -> 0.82 in one day. The corpus was committed at 0.581, named
+#: four bugs within the hour, and successive fixes took it to 0.857 — past
+#: §13's 0.85 target. The floor moves with the measurement because that is what
+#: makes it a ratchet rather than a number somebody set once.
+#:
+#: Passing the target does NOT mean AC-2.3 is met. The target is a claim about
+#: real postings and eleven of these twelve documents are synthetic; see
+#: `golden.MEASURES_REAL_WORLD`. What is true is that the parser scores 0.857 on
+#: the shapes the spec names.
 #:
 #: Below §13's 0.85, and that gap is the point of writing it here: the target is
 #: a claim about real postings and this is a measurement on a synthetic set, so
 #: the honest thing is two numbers rather than one number and a hope.
-F1_FLOOR = 0.72
-PRECISION_FLOOR = 0.70
+F1_FLOOR = 0.82
+PRECISION_FLOOR = 0.84
 
 #: AC-2.4's target is 0.95 and the set is small enough that one wrong answer
 #: moves it three points. Held at the measured value.
@@ -42,13 +51,28 @@ DISJUNCTION_FLOOR = 0.90
 
 
 def _extracted(case: golden.GoldenJd) -> set[str]:
-    """What the parser reads out of this posting, before resolution.
+    """What the parser reads out of this posting, as it reaches the student.
 
-    Surface forms rather than the stored `requirements`, because that is the
-    stage AC-2.3 is about — everything after it is resolution, which AC-2.5
-    covers and M04 owns.
+    `drop_redundant` is part of that and the first version of this scorer left
+    it out — which made the number wrong in a specific and misleading way.
+
+    `_split_conjunctions` keeps the WHOLE phrase and its parts on purpose,
+    because only the resolver can tell "Transactions and ACID" (one concept)
+    from "SQL and data structures" (two). `drop_redundant` then removes the
+    compound once its parts are carrying the meaning. Scoring the stage in
+    between counted "Docker and Kubernetes" as an invented requirement
+    alongside Docker and Kubernetes — a fabrication the student never sees,
+    reported on seven of twelve documents.
+
+    Resolution itself is still excluded: that is AC-2.5, and M04 owns it. What
+    is measured here is what a reader of the JD screen would see with the
+    ontology down, which is the honest floor.
     """
-    return golden.keys(extract_surface_forms(normalise(case.text)))
+    labels = extract_surface_forms(normalise(case.text))
+    # Nothing resolves, so `drop_redundant` falls back to its structural rule:
+    # a phrase whose every conjunction part is present in its own right is
+    # noise. That is exactly the case being corrected for.
+    return golden.keys(drop_redundant(labels, []))
 
 
 # ---------------------------------------------------------------------------
