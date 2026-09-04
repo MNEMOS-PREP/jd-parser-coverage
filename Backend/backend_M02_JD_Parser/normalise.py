@@ -332,7 +332,23 @@ def for_requirements(text: str) -> str:
     the registration section, and each is a hard filter that must not be lost
     to a heuristic about headings.
     """
-    return strip_administrative(text).strip()
+    # Rejoined AGAIN, after the strip rather than only before it.
+    #
+    # `normalise` rejoins first, which is right — a continuation has to be
+    # repaired before anything reads the line. But stripping DELETES lines, and
+    # deleting a line makes its neighbours adjacent. On the real brochure a
+    # table artefact sat between
+    #
+    #     "Design and build RAG pipelines, vector stores, and"
+    #     "knowledge bases"
+    #
+    # so the first pass saw no continuation, the artefact was then removed, and
+    # the two halves stayed apart for the rest of the pipeline. "vector stores,
+    # and" was read as a requirement and "knowledge bases" as another.
+    #
+    # Idempotent, so the second pass costs nothing where the first one worked:
+    # a line that no longer ends mid-phrase matches nothing.
+    return rejoin_layout(strip_administrative(text)).strip()
 
 
 def too_thin(original: str, normalised: str) -> bool:

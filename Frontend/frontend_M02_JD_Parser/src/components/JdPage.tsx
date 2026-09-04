@@ -104,6 +104,26 @@ export function JdPage() {
         </div>
       </header>
 
+      {/* EC-2.6. Not an error and not styled as one. The posting IS parsed —
+          the model pass reads Devanagari without being asked to — and what is
+          thinner is the deterministic English lexicon behind it. A message
+          saying "unsupported language" would tell a student to give up on a
+          page that is about to show them their requirements. */}
+      {data.script !== "latin" && (
+        <div className="mb-6 rounded-md border border-line bg-surface-sunk px-4 py-3">
+          <p className="text-sm text-ink-soft">
+            <span className="font-medium text-ink">
+              This posting is written mostly in{" "}
+              {data.script.charAt(0).toUpperCase() + data.script.slice(1)}
+            </span>{" "}
+            &mdash; {Math.round(data.script_share * 100)}% of its letters. We
+            read it as written, and the requirements below come from the posting
+            itself. Our skill dictionary is English, so we may have missed some:
+            worth checking the list against the original.
+          </p>
+        </div>
+      )}
+
       {/* EC-2.13. Shown because the student did not write this posting: they
           pasted something a placement list forwarded, and one poisoned JD is
           parsed once and shared across everybody preparing for that drive. */}

@@ -110,7 +110,7 @@ _M04_IDS = {
     "Dynamic Programming": "concept:dynamic_programming",
     "Recursion": "concept:recursion",
     "Hashing": "concept:hashing",
-    "SQL": "concept:sql_basics",
+    "SQL": "concept:sql_queries",
     "Transactions": "concept:transactions_acid",
 }
 

@@ -75,9 +75,12 @@ against the student's own resume from M01.
 
 ### What is conspicuously absent
 
-**Doors 1 and 3 of Screen 1.** No company picker, no drive chips, no role
-archetype. Door 3 is marked *mandatory* in the spec and is FR-2.14, a P0. A
-student in September with no drive scheduled cannot use this module at all.
+**The placement-cell CALENDAR.** All three doors of Screen 1 work as of
+2026-08-28 — door 1 is built against M15, which owns companies, aliases and
+drive variants. What M15 knows is which drives a company runs, not which are
+scheduled this month, and §2.3's claim that pre-loading them means *"most
+students never type anything at all"* needs the calendar to be true. `/v1/doors`
+now measures whether it is (AC-2.7).
 
 **Everything downstream of the plan.** The ledger exists and is read back —
 `build_plan` re-prioritises against it — but M05 and M13 are the writers and
@@ -123,7 +126,7 @@ Spec §13. A gate is release-blocking; the rest are tracked.
 | AC-2.4 | 🟡 | **Measured 2026-08-27: 0.90** over §10's 30 strings. Half are NEGATIVE cases — "CI/CD", "TCP/IP", "A/B testing", "24/7 support" — because splitting one fabricates a skill |
 | AC-2.5 | 🟡 | **Measurable 2026-08-27** — `GET /v1/performance`, p95 per stage with the sample count beside it. Whether the 8 s budget is MET is a question about production traffic; on the golden documents every stage is far inside it, and a p95 over a handful of parses is not a p95 |
 | AC-2.6 | ✅ | Plans differ ≥ 30% between students on one JD. `test_two_students_on_one_posting_get_different_plans` asserts it directionally: the student weak on SQL is asked about SQL more, and the reverse for DP. |
-| AC-2.7 | ⬜ | Drive-chip vs manual-paste ratio. Nothing to track — no chips. |
+| AC-2.7 | ✅ | **Measurable 2026-08-28.** `GET /v1/doors`, and there are chips now. Derived from `extracted_by` rather than from a counter of its own — a second record of one event is a second thing to keep correct, and the first time they disagreed nobody could say which was right. Pasting and uploading count as ONE door, because §2.3 counts "bring me the posting" as a single way in. It is the number that says whether door 1 earned its place: if the paste share does not move now the chips exist, the calendar behind it is not worth building either |
 | AC-2.8 | ⬜ | "The interview matched the JD" ≥ 80%. Needs a post-session survey and a session to survey. |
 
 ---
@@ -140,7 +143,7 @@ difference between a demo and a product.
 | EC-2.3 | ✅ | "Java/Python/C++" → `RequirementGroup(any_of)`, satisfied if any one is strong. |
 | EC-2.4 | ✅ | **Landed 2026-08-27.** §6.1's stripper, written against a real brochure (`Testing/JD_Testing/`, Cognizant 2027 Ace Team, 12,446 chars). A rule list for what campus emails have in common, PLUS a structural rule that needs no list — a line appearing 3× in one document is furniture. The structural half is what survives the 51st email. `too_thin` fires on the RATIO, not the length: a 40-word posting is the median (§3.2.1 trap 1), an email that lost 65% of itself to the stripper was mostly not a job description |
 | EC-2.5 | ✅ | Non-technical archetypes now DROP the coding and design rounds rather than merely not allocating to them. An HR interview does not open a twelve-minute coding round because the JD mentioned SQL in passing. Asserted both ways so the drop cannot widen to engineering roles |
-| EC-2.6 | ⬜ | JD in Hindi/Tamil → detect, translate for parsing, keep the original for display. Nothing detects language — but the model pass landed 2026-08-27 and a multilingual model reads Hindi without being told to, so this is now mostly a question of what the SPANS point at |
+| EC-2.6 | 🟡 | **Detection landed 2026-08-28.** `language.py` counts letters by Unicode block — ten scripts, no wheel to install, exact. A posting is non-Latin at 20% of its LETTERS, not a majority, because a real Hindi posting still writes "Java" and the company name in Latin. Verified live: a Devanagari posting reports `devanagari` at 0.879 and still extracts Java, SQL and eight archetype requirements. **Translation is deliberately NOT done** and this stays 🟡 for it: every requirement carries a span into `raw_text`, and offsets into a translation point at text no company published. The §6.2 model pass already reads Hindi, so the extraction that matters works on the original — which is exactly why the spans must stay on it. The screen names the script and says the English lexicon may have missed some |
 | EC-2.7 | ✅ | Unknown company → `POST /v1/jds/from-role` with the default `company_name`. Nothing about the company is fabricated, and `raw_text` stays empty. |
 | EC-2.8 | ✅ | Requirement maps to no concept → `measurable=false`, and the UI says "can't be tested here" with a hatched mark rather than a zero score. |
 | EC-2.9 | ✅ | All-strong → `difficulty: final_boss` and copy about finding a ceiling rather than a gap. Derived from the mastery behind the allocations, not passed in — the point is that the plan NOTICES |
@@ -174,7 +177,7 @@ Spec §2.3.
 
 | Screen | | |
 |---|---|---|
-| 1 — Input, three doors | 🟡 | Doors 2 and 3 work: paste, upload, or pick from 24 roles with the requirement set shown before you commit. **Door 1 (company picker) absent**, and the drive chips — "the highest-value element on this screen" — do not exist. |
+| 1 — Input, three doors | ✅ | **All three land 2026-08-28.** Door 1 is `CompanyDoor`: search a company through M15's alias table, then pick the drive. The chips carry their own figures — TCS Digital reports 7.0 LPA against NQT and Ninja at 3.6 — because a chip reading only "Digital" makes the student click to find out what they are picking. Built against M15 rather than a company table of M02's own: §3.2's fifth hard part is that a second copy of that table is how two modules drift. M15 down leaves the other two doors untouched and names the module. |
 | 2 — Requirement read-back | ✅ | Grouped by necessity with each band's share of the total ask, weights, disjunctions rendered as one row, eligibility banner, per-requirement provenance, and the coverage plan beneath it. |
 | 3 — The gap | 🟡 | `CoveragePanel` shows every requirement's state and never renders `not_measured` as a number. **The spec's "your biggest gap: DBMS — specifically normalisation and indexing, you broke on both in your last session" needs M04 evidence links**, which do not exist. |
 | Match — resume vs posting | ✅ | Not in the spec, added 2026-08-27. Confirmation page then analysis: eligibility verdicts first and alone (§3.2.2 — a hard filter, not a topic), then risks ranked with `blocking` reserved for eligibility, then what the resume evidences. |
@@ -276,18 +279,55 @@ evidence each one. That is M02 feeding the ontology rather than forking it.
   on 2026-08-27. **Not attempted in that session** — a core release retags a
   dependency pinned across six modules and has a four-site version-parity test
   behind it, which deserves its own session rather than the tail of another.
-- **The offline concept table holds five entries.** With M04 down the module is
-  honest and nearly useless. Not wrong, but the degraded path is much thinner
-  than "degraded" suggests.
-- **The heading vocabulary is 30 fixed phrases.** A posting that writes
-  `Responsibilities:` or `What you will do:` extracts *nothing* from the bullets
-  beneath it. Not a vocabulary problem: adding `responsibilities` pulls in
-  "- Design scalable systems" as a fabricated requirement. The real fix is a
-  label-level test of *does this name a thing rather than an action*.
-- **No golden corpus.** AC-2.3 and AC-2.4 cannot be measured, so every
-  extraction change is verified by reading output on one or two examples.
-  Today alone that method found four real bugs — which is the argument both for
-  and against it.
+- ~~**The offline concept table holds five entries.**~~ **Closed 2026-08-28** —
+  110 now, derived from the archetypes' requirement sets rather than written
+  out. The IDs deliberately did NOT grow: `FALLBACK_RESOLUTIONS` still holds
+  exactly five, because an id invented from a label looks exactly like a real
+  one and matches nothing in M04, so every mastery lookup returns nothing and
+  "no score" becomes indistinguishable from "not measured yet". Wide vocabulary,
+  five honest ids.
+
+  Checking those five against M04's actual ontology — the first time anyone
+  had — found `concept:sql_basics`, which **M04 has never had**. It is
+  `concept:sql_queries`. The damage was not limited to a degraded parse:
+  FR-2.12 shares one parse across every student on a drive, so a posting parsed
+  while M04 happened to be down stored a dead id for all sixty of them.
+  `test_the_offline_ids_are_ids_m04_actually_has` is now a gate.
+- ~~**The heading vocabulary is 30 fixed phrases.**~~ **Closed 2026-08-28.**
+  The label-level test this asked for exists, and it needed no verb list. In an
+  action clause the verb comes first and English conjoins verbs with a bare
+  and/or before the object begins, so the split is POSITIONAL — "Build and
+  orchestrate | multi-agent AI systems". Two guards keep it honest, and both
+  are derived rather than listed: the leading run is checked against the
+  archetypes' own ~190 requirement labels, and where every word of the run is a
+  known thing the line is left alone. Where that is ambiguous — "Design" is a
+  thing because "System Design" is an archetype requirement — the DOCUMENT
+  settles it: a conjunction joins like with like, so "Design and build" pairs a
+  thing with a non-thing and reads as verbs, and a bullet with no conjunction
+  is resolved by the majority of its siblings in the same block.
+
+  On the real brochure this recovered the most technology-dense section of the
+  posting: multi-agent AI systems, intent prompts for AI coding agents, RAG
+  pipelines, vector stores and knowledge bases — all previously discarded to
+  avoid four verbs.
+- ~~**No golden corpus.**~~ This line was stale and is left struck through
+  rather than deleted: the corpus landed on 2026-08-27 and AC-2.3 has been
+  measured at 0.857 since. A debt entry that outlives its debt is worse than no
+  entry, because the next session reads it and re-plans work already done.
+
+- **No migrations.** The dev database has now been rotated twice in one session
+  — once for the FR-2.13 columns and once for `script`/`script_share` — because
+  a schema change makes every existing row unreadable and every request 500s
+  with a SQL error rather than a sentence. `*.db.*` is gitignored so the
+  rotation is cheap, and that is a workaround, not a fix.
+
+- **The `for_requirements` pipeline rejoins twice.** `normalise` rejoins before
+  stripping and `for_requirements` rejoins again after it, because stripping
+  DELETES lines and deleting a line makes its neighbours adjacent. Correct, and
+  it means the layout repair is not a single pass anybody can point at. Found
+  on the real brochure, where a table artefact sat between "Design and build RAG
+  pipelines, vector stores, and" and "knowledge bases" and kept them apart for
+  the whole pipeline.
 
 ---
 

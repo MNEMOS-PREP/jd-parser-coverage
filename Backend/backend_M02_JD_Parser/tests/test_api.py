@@ -53,7 +53,7 @@ def test_parse_marks_offline_provenance(client):
     data = res.json()
     assert data["scanned_against"] == "offline_lexicon"
     assert set(data["concept_source"].values()) == {"offline_fallback"}
-    assert data["resolved_concepts"]["SQL"] == "concept:sql_basics"
+    assert data["resolved_concepts"]["SQL"] == "concept:sql_queries"
 
 
 def test_coverage_is_null_not_zero_when_m04_is_down(client):
@@ -111,7 +111,7 @@ def test_coverage_scores_only_what_m04_measured(client, m04_mastery):
         {
             "measured": [
                 {"concept_id": "concept:dynamic_programming", "mastery_p": 0.82},
-                {"concept_id": "concept:sql_basics", "mastery_p": 0.20},
+                {"concept_id": "concept:sql_queries", "mastery_p": 0.20},
                 # Recursion deliberately absent: M04 is up and has not measured it.
             ]
         }
@@ -240,7 +240,7 @@ def test_coverage_carries_the_concept_ids_and_their_provenance(client):
     jd_id = res_parse.json()["id"]
     cov = client.get(f"/v1/jds/{jd_id}/coverage/{uuid.uuid4()}").json()
 
-    assert cov["resolved_concepts"]["SQL"] == "concept:sql_basics"
+    assert cov["resolved_concepts"]["SQL"] == "concept:sql_queries"
     assert cov["concept_source"]["SQL"] == "offline_fallback"
     assert cov["scanned_against"] == "offline_lexicon"
 
@@ -888,7 +888,7 @@ def test_a_slash_splits_only_when_the_ontology_knows_the_parts(client, m04):
             "Java": "concept:java",
             "Python": "concept:python",
             "C++": "concept:cpp",
-            "SQL": "concept:sql_basics",
+            "SQL": "concept:sql_queries",
         },
     )
     body = _parsed(client, SLASH_JD)
@@ -955,7 +955,7 @@ def test_a_shorter_name_inside_a_longer_one_is_a_different_technology(client, m0
     into one, and telling a student they are covered on a database they have
     never used.
     """
-    m04.up(concepts=list(FALLBACK_CONCEPTS), resolved={"SQL": "concept:sql_basics"})
+    m04.up(concepts=list(FALLBACK_CONCEPTS), resolved={"SQL": "concept:sql_queries"})
     body = _parsed(client, "Data Engineer\n\nRequirements:\n- SQL\n- NoSQL\n")
     texts = [r["text"] for r in body["requirements"]]
 
@@ -980,7 +980,7 @@ def test_a_choice_is_met_by_one_of_its_answers(client, m04_mastery):
             "measured": [
                 {"concept_id": "concept:dynamic_programming", "mastery_p": 0.85},
                 {"concept_id": "concept:recursion", "mastery_p": 0.15},
-                {"concept_id": "concept:sql_basics", "mastery_p": 0.90},
+                {"concept_id": "concept:sql_queries", "mastery_p": 0.90},
             ]
         }
     )
@@ -1189,7 +1189,7 @@ def test_the_budget_does_not_collapse_onto_the_worst_gap(client, m04_mastery):
     m04_mastery(
         {
             "measured": [
-                {"concept_id": "concept:sql_basics", "mastery_p": 0.05},
+                {"concept_id": "concept:sql_queries", "mastery_p": 0.05},
                 {"concept_id": "concept:dynamic_programming", "mastery_p": 0.80},
                 {"concept_id": "concept:recursion", "mastery_p": 0.75},
             ]
@@ -1224,7 +1224,7 @@ def test_two_students_on_one_posting_get_different_plans(client, m04_mastery):
     fake = m04_mastery(
         {
             "measured": [
-                {"concept_id": "concept:sql_basics", "mastery_p": 0.10},
+                {"concept_id": "concept:sql_queries", "mastery_p": 0.10},
                 {"concept_id": "concept:dynamic_programming", "mastery_p": 0.90},
                 {"concept_id": "concept:recursion", "mastery_p": 0.85},
             ]
@@ -1236,7 +1236,7 @@ def test_two_students_on_one_posting_get_different_plans(client, m04_mastery):
     fake.up(
         mastery={
             "measured": [
-                {"concept_id": "concept:sql_basics", "mastery_p": 0.90},
+                {"concept_id": "concept:sql_queries", "mastery_p": 0.90},
                 {"concept_id": "concept:dynamic_programming", "mastery_p": 0.10},
                 {"concept_id": "concept:recursion", "mastery_p": 0.15},
             ]
@@ -1616,7 +1616,7 @@ def test_strong_everywhere_goes_looking_for_the_ceiling(client, m04_mastery):
             "measured": [
                 {"concept_id": "concept:dynamic_programming", "mastery_p": 0.95},
                 {"concept_id": "concept:recursion", "mastery_p": 0.93},
-                {"concept_id": "concept:sql_basics", "mastery_p": 0.91},
+                {"concept_id": "concept:sql_queries", "mastery_p": 0.91},
                 {"concept_id": "concept:hashing", "mastery_p": 0.92},
             ]
         }
@@ -1666,7 +1666,7 @@ def test_a_mastery_the_estimator_is_unsure_of_is_not_measured(client, m04_master
             "measured": [
                 # se 1.4 against a prior of 1.5 — barely better than knowing
                 # nothing, which is exactly what §6.5's gate is for.
-                {"concept_id": "concept:sql_basics", "mastery_p": 0.85, "se_effective": 1.4},
+                {"concept_id": "concept:sql_queries", "mastery_p": 0.85, "se_effective": 1.4},
             ]
         }
     )
@@ -1689,7 +1689,7 @@ def test_a_confident_mastery_is_scored_normally(client, m04_mastery):
     m04_mastery(
         {
             "measured": [
-                {"concept_id": "concept:sql_basics", "mastery_p": 0.85, "se_effective": 0.3},
+                {"concept_id": "concept:sql_queries", "mastery_p": 0.85, "se_effective": 0.3},
             ]
         }
     )
@@ -1717,7 +1717,7 @@ def test_a_weakness_we_are_half_sure_of_is_half_a_weakness(client, m04_mastery):
     m04_mastery(
         {
             "measured": [
-                {"concept_id": "concept:sql_basics", "mastery_p": 0.20, "se_effective": 0.75},
+                {"concept_id": "concept:sql_queries", "mastery_p": 0.20, "se_effective": 0.75},
             ]
         }
     )
@@ -1746,7 +1746,7 @@ def test_an_upstream_that_states_no_uncertainty_is_not_treated_as_certainly_wron
     that publishes no uncertainty and throw it away — which is what the first
     version of this did, and it turned six passing tests red.
     """
-    m04_mastery({"measured": [{"concept_id": "concept:sql_basics", "mastery_p": 0.85}]})
+    m04_mastery({"measured": [{"concept_id": "concept:sql_queries", "mastery_p": 0.85}]})
     res = client.post(
         "/v1/jds/parse",
         json={
@@ -1776,7 +1776,7 @@ def test_stale_evidence_widens_the_uncertainty_m02_reads(client, m04_mastery):
                 # Confident when recorded, widened by age. The plan must read
                 # the widened one.
                 {
-                    "concept_id": "concept:sql_basics",
+                    "concept_id": "concept:sql_queries",
                     "mastery_p": 0.85,
                     "se": 0.2,
                     "se_effective": 1.45,

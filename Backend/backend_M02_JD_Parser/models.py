@@ -121,6 +121,18 @@ class JobDescription(SQLModel, table=True):
     #: fact about the posting they are about to prepare against.
     injections_removed: int = Field(default=0)
 
+    #: The script the posting is written in (EC-2.6): `latin`, `devanagari`,
+    #: `tamil`, and so on.
+    #:
+    #: Stored rather than recomputed, because it is part of what this parse IS
+    #: and the parse is cached and shared across sixty students. Recomputing it
+    #: on read would also mean re-deciding it, and two answers about one
+    #: document is the failure this module avoids everywhere else.
+    script: str = Field(default="latin")
+    #: How much of the document that script accounts for, as a share of its
+    #: LETTERS. 1.0 for an empty document — nothing to detect is not a warning.
+    script_share: float = Field(default=1.0)
+
     role_archetype: str | None = Field(default=None)
     archetype_confidence: float = Field(default=0.0)
 

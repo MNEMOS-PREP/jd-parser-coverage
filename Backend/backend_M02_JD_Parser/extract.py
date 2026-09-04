@@ -84,6 +84,7 @@ adjective.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from typing import Any
 
 from ai_core.concepts import normalise_alias
@@ -150,6 +151,179 @@ _HEADINGS = (
     "eligibility",
     "eligibility criteria",
 )
+
+#: Headings that introduce an enumeration of ACTIONS rather than of things.
+#:
+#: The distinction `_HEADINGS` could not make. Under "Requirements" a bullet IS
+#: a requirement; under "What you will do" a bullet is a job, and the
+#: requirement is the thing the job is done to.
+#:
+#: This stays a vocabulary of HEADINGS, not of verbs, and that is the reason it
+#: is acceptable where a verb list would not be: headings are a closed,
+#: document-structural set that a decade of postings has not moved, while the
+#: verbs inside them are open by construction — "orchestrate" would not have
+#: been on any list written before this brochure.
+_ACTION_HEADINGS = (
+    "responsibilities",
+    "key responsibilities",
+    "roles and responsibilities",
+    "what you will do",
+    "what you'll do",
+    "you will",
+    "in this role",
+    "the role",
+    "role overview",
+    "day to day",
+    "your impact",
+)
+
+_ACTION_HEADING_RE = re.compile(
+    r"^\s*(?:[-*•·]\s*)?(?:" + "|".join(re.escape(h) for h in _ACTION_HEADINGS) + r")\s*[:–-]?\s*$",
+    re.IGNORECASE,
+)
+
+#: The leading verb run of an action clause: a word, plus any words conjoined
+#: to it with a bare "and"/"or", followed by the object.
+#:
+#: Positional rather than lexical. In an action clause the verb is first and
+#: English conjoins verbs before the object begins, so "Build and orchestrate"
+#: is separable from "multi-agent AI systems" without knowing that either word
+#: is a verb.
+_VERB_RUN = re.compile(r"^(?P<run>[A-Za-z]+(?:\s+(?:and|or)\s+[A-Za-z]+){0,2})\s+(?P<object>\S.*)$")
+
+#: Longest leading run worth stripping, in words. Three covers "design, build
+#: and deploy"; beyond that the line is a sentence and the split is a guess.
+MAX_VERB_RUN_WORDS = 5
+
+#: Shortest object worth keeping. One word after a verb is usually the verb's
+#: particle ("Build out", "Roll out"), not a requirement.
+MIN_OBJECT_WORDS = 2
+
+#: Longest object worth keeping. A noun phrase naming a requirement has a
+#: length; past it the bullet is a sentence and its first word is not a verb.
+#:
+#: Measured rather than picked: the four action bullets on the real brochure
+#: run 6, 6, 6 and 7 words, and "We are very much looking for people who thrive
+#: in ambiguity" is ten. Without the bound that sentence loses its "We" and
+#: becomes a requirement — nothing downstream would have accepted it, because
+#: `_acceptable` refuses a label of that length, but producing garbage and
+#: relying on a later filter is how a filter change becomes a regression
+#: somewhere else.
+MAX_OBJECT_WORDS = 8
+
+
+@lru_cache(maxsize=1)
+def known_things() -> frozenset[str]:
+    """Words this module already knows name a thing rather than an action.
+
+    Derived from the 24 archetypes' requirement sets — about 190 labels that
+    were written as the canonical things a role is interviewed on, and are
+    maintained because §6.3's backfill depends on them. Every word of every
+    label, so "Data Structures" contributes both halves and a bullet opening
+    on "Structures" is left alone.
+
+    Deriving it is the whole point. A second list of "words that are things"
+    would need maintaining beside the first, and the day somebody added a
+    requirement to an archetype without also adding it here, the strip would
+    start eating it.
+
+    Imported inside the function because `archetypes` imports this module — the
+    dependency is real in both directions and only this one is lazy.
+    """
+    from backend_M02_JD_Parser.archetypes import ARCHETYPES
+
+    words: set[str] = set()
+    for archetype in ARCHETYPES:
+        for requirement in archetype.requirements:
+            for word in normalise_alias(requirement).split():
+                if len(word) > 2:
+                    words.add(word)
+    return frozenset(words)
+
+
+def object_of(line: str, things: frozenset[str] | None = None) -> str:
+    """The thing an action bullet acts ON, or the line unchanged.
+
+    `things` is the module's own thing-vocabulary, derived from the archetype
+    requirement sets, and it is the guard that stops the strip eating a real
+    requirement. A bullet opening on a known skill ("Python and SQL
+    development") is left alone; nothing else in this function knows what a
+    verb is, and nothing needs to.
+    """
+    stripped, _ = _object_and_reason(line, things)
+    return stripped
+
+
+#: `object_of` declined because every word of the run is a known thing. The one
+#: outcome a sibling bullet can overrule — see `resolve_action_block`.
+AMBIGUOUS = "ambiguous"
+
+
+def _object_and_reason(line: str, things: frozenset[str] | None) -> tuple[str, str]:
+    things = known_things() if things is None else things
+    body = _BULLET.sub("", line).strip().rstrip(".")
+    match = _VERB_RUN.match(body)
+    if match is None:
+        return line, "no-run"
+
+    run = match.group("run")
+    obj = match.group("object")
+
+    if len(run.split()) > MAX_VERB_RUN_WORDS:
+        return line, "run-too-long"
+    if not MIN_OBJECT_WORDS <= len(obj.split()) <= MAX_OBJECT_WORDS:
+        return line, "object-out-of-range"
+    # EVERY word of the run is a thing this module knows, so the run is not a
+    # verb phrase.
+    #
+    # Every, not the first, and the difference is what makes the guard work.
+    # "Design" is in the vocabulary because "System Design" is an archetype
+    # requirement, so a first-word test left "Design and build RAG pipelines"
+    # untouched and lost the densest line in the posting.
+    #
+    # A conjunction joins like with like. "Design and build" pairs a word the
+    # module knows with one it does not, which resolves the ambiguity in favour
+    # of the verb reading; "Python and SQL" pairs two things and stays a thing.
+    # The sentence disambiguates itself, and no list of ambiguous words is
+    # needed to notice it.
+    words = [w for w in run.split() if w.lower() not in {"and", "or"}]
+    if words and all(normalise_alias(w) in things for w in words):
+        return line, AMBIGUOUS
+
+    return obj, "stripped"
+
+
+def resolve_action_block(lines: list[str]) -> list[str]:
+    """Strip the verb from each bullet, letting the block settle its own ties.
+
+    A bullet whose leading word is a known thing is ambiguous on its own —
+    "Design AI-native solutions" reads as a requirement called "Design" or as a
+    job with "AI-native solutions" as its object, and nothing in the line
+    decides which.
+
+    Its siblings decide. A block of jobs is written in one voice, so if the
+    unambiguous bullets around it opened on verbs, so did this one. Ambiguity
+    is resolved by majority of what was NOT ambiguous, and by leaving the line
+    alone when there is no majority — which is the same refusal the archetype
+    matcher makes when two roles are too close.
+    """
+    things = known_things()
+    verdicts = [_object_and_reason(line, things) for line in lines]
+
+    decided = [reason for _, reason in verdicts if reason in {"stripped", "no-run"}]
+    verb_voiced = decided.count("stripped") > len(decided) / 2
+
+    out: list[str] = []
+    for original, (stripped, reason) in zip(lines, verdicts, strict=True):
+        if reason == AMBIGUOUS and verb_voiced:
+            # Re-run with an empty vocabulary: the block has already said this
+            # is a verb, so the only thing that made it ambiguous is gone.
+            forced, _ = _object_and_reason(original, frozenset())
+            out.append(forced)
+        else:
+            out.append(stripped)
+    return out
+
 
 #: A heading is the whole line ("SKILLS"), or a label with an explicit
 #: separator ("Required: Python, SQL"). Without the separator requirement,
@@ -456,6 +630,19 @@ def _list_lines(text: str) -> list[str]:
     lines = text.splitlines()
     out: list[str] = []
     in_list = False
+    #: Inside a block that enumerates ACTIONS rather than things, so a bullet
+    #: contributes its object rather than itself. See `_ACTION_HEADINGS`.
+    in_actions = False
+    #: Buffered rather than emitted, because an ambiguous bullet is resolved by
+    #: what its siblings did and they are not all read yet.
+    actions: list[str] = []
+
+    def flush() -> None:
+        nonlocal actions
+        if actions:
+            out.extend(resolve_action_block(actions))
+            actions = []
+
     #: Whether anything has actually been collected since the heading opened.
     #:
     #: A blank line closes a list, which is right — it is what stops one
@@ -476,6 +663,20 @@ def _list_lines(text: str) -> list[str]:
         if not line.strip():
             if started:
                 in_list = False
+                if in_actions:
+                    flush()
+                in_actions = False
+            continue
+
+        if _ACTION_HEADING_RE.match(line):
+            flush()
+            # "What you will do" over a table of jobs. Opened, not skipped —
+            # the bullets beneath it are the most technology-dense lines in a
+            # modern posting, and the module used to discard all of them to
+            # avoid four verbs.
+            in_list = True
+            in_actions = True
+            started = False
             continue
 
         heading = _HEADING_RE.match(line)
@@ -484,10 +685,18 @@ def _list_lines(text: str) -> list[str]:
             # same way a bare "Skills" does. No remainder to split off, because
             # a compound heading names the section rather than introducing an
             # inline list.
+            flush()
             in_list = True
+            in_actions = False
             started = False
             continue
         if heading:
+            # Closes the action block as surely as a compound heading does.
+            # Without this, "Requirements:" after a "What you will do" table
+            # left `in_actions` set and the verb strip ran on the requirements
+            # underneath it — "Strong DBMS fundamentals" lost its "Strong".
+            flush()
+            in_actions = False
             remainder = (heading.group(2) or "").strip()
             if remainder:
                 # "Required: Python, SQL" - the list is on the heading line.
@@ -526,16 +735,23 @@ def _list_lines(text: str) -> list[str]:
             # where it was throwing away requirements, to the LABEL, where it
             # was already doing the work.
             if _BULLET.match(line) or _DELIMITERS.search(line) or len(line.split()) <= MAX_WORDS:
-                out.append(line)
+                if in_actions:
+                    actions.append(line)
+                else:
+                    out.append(line)
                 started = True
             else:
                 in_list = False
+                if in_actions:
+                    flush()
+                in_actions = False
             continue
 
         # No heading above it, and it still enumerates. See `_reads_as_a_list`.
         if _reads_as_a_list(line):
             out.append(line)
 
+    flush()
     return out
 
 

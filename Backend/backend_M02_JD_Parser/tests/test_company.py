@@ -414,9 +414,11 @@ def m15_answers(monkeypatch):
         def fake_get(deps, path, timeout=2.0):
             if deps.get("M15") is None or not deps.is_available("M15"):
                 return None
-            for prefix, payload in routes.items():
+            # Longest prefix first: "/v1/companies/c1/variants" also starts
+            # with "/v1/companies", so insertion order decides the answer.
+            for prefix in sorted(routes, key=len, reverse=True):
                 if path.startswith(prefix):
-                    return payload
+                    return routes[prefix]
             return None
 
         monkeypatch.setattr(m15, "m15_get", fake_get)

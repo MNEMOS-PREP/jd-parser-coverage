@@ -16,6 +16,7 @@ import logging
 import math
 import re
 import time
+import urllib.parse
 import urllib.request
 import uuid
 from functools import lru_cache
@@ -38,14 +39,20 @@ from fastapi import (
     UploadFile,
     status,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from backend_M02_JD_Parser.archetypes import ARCHETYPES, BY_ID, backfill_labels, candidates
 from backend_M02_JD_Parser.archetypes import match as match_archetype
-from backend_M02_JD_Parser.company import CompanyBrief, build_brief
+from backend_M02_JD_Parser.company import (
+    CompanyBrief,
+    build_brief,
+    m15_get,
+    same_archetype,
+)
 from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
 from backend_M02_JD_Parser.edits import ACTIONS, NECESSITY, RequirementEdit, effective
+from backend_M02_JD_Parser.language import dominant_script
 from backend_M02_JD_Parser.ledger import (
     PLANNED,
     SCORED,
@@ -276,23 +283,80 @@ class JdParseIn(BaseModel):
     raw_text: str
 
 
-#: Enough ontology to be useful with M04 down, and small enough that nobody
-#: mistakes it for the ontology. Responses record which one was used.
-FALLBACK_CONCEPTS: list[dict[str, Any]] = [
+#: The five concepts whose M04 ids are known and verified.
+#:
+#: Hand-written on purpose, and the only part of the offline path that is. An
+#: id here is a claim that M04's ontology contains this exact string, and it is
+#: checked against M04 at `test_the_offline_ids_are_ids_m04_actually_has`.
+_VERIFIED_CONCEPTS: list[dict[str, Any]] = [
     {"name": "Dynamic Programming", "aliases": ["DP", "dynamic programming"]},
     {"name": "Recursion", "aliases": ["recursion"]},
     {"name": "Hashing", "aliases": ["hashing", "hash map", "hashmap"]},
-    {"name": "SQL", "aliases": ["sql", "sql_basics"]},
+    {"name": "SQL", "aliases": ["sql", "sql_queries"]},
     {"name": "Transactions", "aliases": ["transactions", "transactions_acid"]},
 ]
 
+#: label -> M04 concept id, for the five above and nothing else.
+#:
+#: Deliberately NOT derived, while the vocabulary below is. An id invented from
+#: an archetype label — `concept:kubernetes` — would look exactly like a real
+#: one and match nothing in M04, so every mastery lookup against it returns
+#: nothing and "no score" becomes indistinguishable from "not measured yet".
+#: Five honest ids beat a hundred and ninety plausible ones.
 FALLBACK_RESOLUTIONS = {
     "dynamic programming": "concept:dynamic_programming",
     "recursion": "concept:recursion",
     "hashing": "concept:hashing",
-    "sql": "concept:sql_basics",
+    # `concept:sql_queries`, not `concept:sql_basics`. M04 has never had the
+    # second, and M02 had been handing it out since the offline table was
+    # written — caught the first time the ids were checked against M04's
+    # ontology rather than against this file.
+    #
+    # The damage was not limited to a degraded parse. FR-2.12 caches the parse
+    # by content hash and SHARES it across every student on the drive, so one
+    # posting parsed while M04 happened to be down stored a dead id in
+    # `resolved_concepts` for all sixty of them — and a dead id fails silently
+    # in the worst direction: the mastery lookup succeeds, returns no rows, and
+    # reads as "never measured" rather than as "this id is wrong".
+    "sql": "concept:sql_queries",
     "transactions": "concept:transactions_acid",
 }
+
+
+@lru_cache(maxsize=1)
+def _fallback_concepts() -> list[dict[str, Any]]:
+    """What the module can recognise with M04 unreachable.
+
+    Five entries was the honest answer and a nearly useless one: a posting
+    scanned offline saw DP, recursion, hashing, SQL and transactions, and was
+    blind to every other thing a company has ever asked for.
+
+    The 24 archetypes already carry the canonical requirement set for each
+    role — about 190 labels, reviewed, and trusted enough that §6.3 ADDS
+    requirements from them. Reusing that vocabulary here costs nothing to
+    maintain and cannot drift, because there is one copy of it.
+
+    None of the derived entries carries a concept id. They widen what the
+    module can SEE; grounding still needs M04, which is the `testable` versus
+    `grounded` split FR-2.5 already draws.
+    """
+    from backend_M02_JD_Parser.archetypes import ARCHETYPES
+
+    concepts = list(_VERIFIED_CONCEPTS)
+    seen = {normalise_alias(c["name"]) for c in concepts}
+
+    for archetype in ARCHETYPES:
+        for requirement in archetype.requirements:
+            key = normalise_alias(requirement)
+            if key and key not in seen:
+                seen.add(key)
+                concepts.append({"name": requirement, "aliases": [requirement.lower()]})
+    return concepts
+
+
+#: Enough ontology to be useful with M04 down, and never mistaken for the
+#: ontology — responses record which one was used.
+FALLBACK_CONCEPTS: list[dict[str, Any]] = _fallback_concepts()
 
 
 @router.get("/deps", response_model=list[DependencyStatus], tags=["meta"])
@@ -374,6 +438,11 @@ def parse_jd(
             len(findings),
             ", ".join(sorted({f.kind for f in findings})),
         )
+
+    # EC-2.6, decided before anything tries to read the text. A Devanagari
+    # posting used to go through the whole pipeline, match no lexicon entry and
+    # produce a clean screen saying the job asks for no skills.
+    script, share = dominant_script(text)
 
     mark = _mark("normalise", started)
 
@@ -592,6 +661,11 @@ def parse_jd(
         # Counted from the RESULT, not from what was suggested: a suggested
         # label that turned out to be in the document is stated, not inferred.
         injections_removed=len(findings),
+        # EC-2.6. Detected on the NORMALISED text, not the raw bytes: a PDF's
+        # header and font names are Latin and would dilute the share of a
+        # posting that is entirely Devanagari.
+        script=script,
+        script_share=share,
         extracted_by=extracted_by,
         parse_ms=int((time.perf_counter() - started) * 1000),
         stage_ms=stage_ms,
@@ -1119,6 +1193,231 @@ class RoleOnlyIn(BaseModel):
     company_name: str = "Any company"
 
 
+class CompanyOption(BaseModel):
+    """One company the student can pick, as M15 spells it (§2.3 door 1)."""
+
+    id: str
+    name: str
+    #: Every other spelling M15 resolves to this company. Shown, because a
+    #: student searching "CTS" needs to recognise "Cognizant" in the result.
+    aliases: list[str] = Field(default_factory=list)
+    #: How many drive reports M15 holds. The list screen's real advantage is
+    #: showing how much is known BEFORE the student commits to a company.
+    report_count: int = 0
+
+
+class DriveOption(BaseModel):
+    """One drive chip: a specific interview this company runs."""
+
+    id: str
+    name: str
+    company_id: str
+    #: M15's archetype string, resolved to M02's id where the two agree. `None`
+    #: when M15 names a role M02 has no archetype for — the chip still works,
+    #: it just cannot pre-fill a requirement set.
+    archetype_id: str | None = None
+    typical_package_lpa: float | None = None
+    bond_months: int | None = None
+    typical_locations: list[str] = Field(default_factory=list)
+
+
+@router.get("/companies", response_model=list[CompanyOption], tags=["meta"])
+def list_companies(q: str = ""):
+    """The companies a student can pick from (§2.3 door 1).
+
+    A proxy onto M15 rather than a table of M02's own. §3.2's fifth hard part
+    is that "TCS", "Tata Consultancy Services" and "TCS Digital" are one
+    company and several drives, and that the alias table matters more than it
+    sounds — so there is exactly one of it, in the module that owns it.
+
+    Empty rather than an error when M15 is down. The screen needs to render
+    either way, `/deps` already says which module is missing, and an exception
+    here would take the whole input screen down over an optional door.
+    """
+    rows = m15_get(dependency_registry(), f"/v1/companies?q={urllib.parse.quote(q.strip())}")
+    if not isinstance(rows, list):
+        return []
+    return [
+        CompanyOption(
+            id=str(row.get("id")),
+            name=str(row.get("canonical_name") or ""),
+            aliases=[str(a) for a in row.get("aliases") or []],
+            report_count=int(row.get("report_count") or 0),
+        )
+        for row in rows
+        if row.get("id")
+    ]
+
+
+@router.get("/companies/{company_id}/drives", response_model=list[DriveOption], tags=["meta"])
+def list_drives(company_id: str):
+    """The drives this company runs — §2.3's "highest-value element".
+
+    Each carries the figures the posting would have stated, so a student who
+    picks a chip already knows the package and the bond before any JD exists.
+
+    `archetype_id` is resolved through `same_archetype`, which reads M15's
+    spelling against M02's archetype titles. The two vocabularies are not the
+    same and were never going to be: M15 writes `sde`, M02's id is `sde_1`.
+    """
+    rows = m15_get(dependency_registry(), f"/v1/companies/{company_id}/variants")
+    if not isinstance(rows, list):
+        return []
+
+    out: list[DriveOption] = []
+    for row in rows:
+        if not row.get("id"):
+            continue
+        m15_archetype = str(row.get("role_archetype") or "")
+        matched = next(
+            (a.id for a in ARCHETYPES if same_archetype(m15_archetype, a.id)),
+            None,
+        )
+        out.append(
+            DriveOption(
+                id=str(row["id"]),
+                name=str(row.get("name") or ""),
+                company_id=str(company_id),
+                archetype_id=matched,
+                typical_package_lpa=row.get("typical_package_lpa"),
+                bond_months=row.get("bond_months"),
+                typical_locations=[str(x) for x in row.get("typical_locations") or []],
+            )
+        )
+    return out
+
+
+class DriveIn(BaseModel):
+    """§2.3 door 1: a company and the drive being sat."""
+
+    company_id: str
+    drive_id: str
+
+
+@router.post("/jds/from-drive", response_model=JobDescription, status_code=status.HTTP_201_CREATED)
+def parse_from_drive(
+    payload: DriveIn,
+    response: Response,
+    session: Session = Depends(get_db),
+):
+    """A requirement set for a named drive at a named company (§2.3 door 1).
+
+    Door 3 already turns an archetype into a requirement set. This is the same
+    machinery with two things door 3 cannot know: WHICH company, and which of
+    that company's interviews.
+
+    Both matter to everything downstream. The company name is what FR-2.13
+    resolves to fetch the drive's reported topics and its package and bond; the
+    drive is which of three TCS interviews the student is actually sitting. A
+    plan built from "SDE at any company" and one built from "TCS Digital" are
+    different plans, and until now only the first could be asked for.
+
+    `raw_text` stays EMPTY, exactly as in door 3 and for the same reason: there
+    is no posting, and storing a plausible one would make the read-back screen
+    quote sentences no company published.
+    """
+    drives = list_drives(payload.company_id)
+    drive = next((d for d in drives if d.id == payload.drive_id), None)
+    if drive is None:
+        # Covers both "no such drive" and "M15 is down", and says which,
+        # because only one of them is something the student can act on.
+        deps = dependency_registry()
+        if not deps.is_available("M15"):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Company drives need M15 Company Guider, which is not running. "
+                    "You can still paste the posting, upload it, or pick a role."
+                ),
+            )
+        raise HTTPException(status_code=404, detail="No such drive for this company.")
+
+    companies = list_companies(q="")
+    company = next((c for c in companies if c.id == payload.company_id), None)
+    company_name = company.name if company else "Any company"
+
+    archetype = BY_ID.get(drive.archetype_id or "")
+    if archetype is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"We know the {drive.name} drive but not the role it hires for, so we "
+                "cannot build a requirement set for it. Pick a role instead, or paste "
+                "the posting."
+            ),
+        )
+
+    # Keyed on the DRIVE, not the archetype. Two students sitting TCS Digital
+    # share one requirement set; a student sitting TCS Ninja does not share
+    # theirs, because it is a different interview.
+    digest = content_digest(company_name, drive.name, f"drive:{drive.id}")
+    cached = session.exec(
+        select(JobDescription).where(JobDescription.content_sha256 == digest)
+    ).first()
+    if cached is not None:
+        response.status_code = status.HTTP_200_OK
+        return cached
+
+    concepts = get_m04_concepts()
+    scanned_against = "m04" if concepts else "offline_lexicon"
+
+    labels = list(archetype.requirements)
+    resolved = resolve_labels(labels)
+    concepts_by_label: dict[str, str] = {}
+    concept_source: dict[str, str] = {}
+    unresolved: list[str] = []
+    for label in labels:
+        concept_id = resolved.get(label) or FALLBACK_RESOLUTIONS.get(normalise_alias(label))
+        if concept_id:
+            concepts_by_label[label] = str(concept_id)
+            concept_source[label] = "m04" if resolved.get(label) else "offline_fallback"
+        else:
+            unresolved.append(label)
+
+    requirement_set = locate(
+        "",
+        labels,
+        resolved=concepts_by_label,
+        sources=concept_source,
+        inferred=labels,
+    )
+
+    # What M15 knows about the drive, stored as eligibility. These are the only
+    # figures on this record that came from anywhere real — there is no posting
+    # to read them off, and reported figures are better than none.
+    eligibility: dict[str, Any] = {}
+    if drive.typical_package_lpa is not None:
+        eligibility["package_lpa_total"] = drive.typical_package_lpa
+    if drive.bond_months is not None:
+        eligibility["bond_months"] = drive.bond_months
+    if drive.typical_locations:
+        eligibility["location"] = drive.typical_locations
+
+    jd = JobDescription(
+        company_name=company_name,
+        role_title=drive.name,
+        raw_text="",
+        content_sha256=digest,
+        required_skills=labels,
+        eligibility=eligibility,
+        requirements=[r.model_dump(mode="json") for r in requirement_set.requirements],
+        requirement_groups=[g.model_dump(mode="json") for g in requirement_set.groups],
+        resolved_concepts=concepts_by_label,
+        concept_source=concept_source,
+        unresolved_skills=unresolved,
+        scanned_against=scanned_against,
+        extracted_by="drive",
+        role_archetype=archetype.id,
+        # Chosen by the student, not inferred by us.
+        archetype_confidence=1.0,
+        inferred_count=len(labels),
+    )
+    session.add(jd)
+    session.commit()
+    session.refresh(jd)
+    return jd
+
+
 @router.post("/jds/from-role", response_model=JobDescription, status_code=status.HTTP_201_CREATED)
 def parse_from_role(
     payload: RoleOnlyIn,
@@ -1401,6 +1700,68 @@ class StagePerf(BaseModel):
     budget_ms: int
     within_budget: bool
     samples: int
+
+
+class DoorUsage(BaseModel):
+    """How one of §2.3's three doors is actually being used (AC-2.7)."""
+
+    door: str
+    #: What a student would call it, because this renders on an ops screen that
+    #: a placement officer reads and "extracted_by=lexicon" is not a door.
+    label: str
+    count: int
+    share: float
+
+
+@router.get("/doors", response_model=list[DoorUsage], tags=["meta"])
+def door_usage(session: Session = Depends(get_db)):
+    """Which door students come through (AC-2.7).
+
+    §13 asks for the drive-chip versus manual-paste ratio, and until the chips
+    existed there was nothing to measure. This is that ratio, over the postings
+    this instance holds.
+
+    It is the number that says whether door 1 earned its place. §2.3 claims
+    pre-loading the drives means "most students never type anything at all"; if
+    the chips ship and the paste share does not move, the claim was wrong and
+    the placement-cell calendar behind it is not worth building either.
+
+    Derived from `extracted_by` rather than from a counter of its own. A second
+    record of the same event is a second thing to keep correct, and the first
+    time the two disagreed nobody could say which was right.
+
+    Empty until something is parsed — the honest answer to "what is your ratio"
+    before there is one, and different from a set of zeroes.
+    """
+    rows = list(session.exec(select(JobDescription)).all())
+    if not rows:
+        return []
+
+    #: `extracted_by` value -> the door it belongs to. Pasting and uploading
+    #: are ONE door: §2.3 counts "bring me the posting" as a single way in, and
+    #: a student who forwards the mail as an attachment made the same choice as
+    #: one who copied its body.
+    doors = {
+        "drive": ("drive_chip", "Picked a campus drive"),
+        "archetype": ("role_only", "Just picked a role"),
+    }
+
+    counts: dict[str, int] = {}
+    labels: dict[str, str] = {}
+    for row in rows:
+        door, label = doors.get(row.extracted_by or "", ("posting", "Pasted or uploaded a posting"))
+        counts[door] = counts.get(door, 0) + 1
+        labels[door] = label
+
+    total = len(rows)
+    return sorted(
+        (
+            DoorUsage(door=door, label=labels[door], count=count, share=round(count / total, 3))
+            for door, count in counts.items()
+        ),
+        key=lambda usage: usage.count,
+        reverse=True,
+    )
 
 
 @router.get("/performance", response_model=list[StagePerf], tags=["meta"])

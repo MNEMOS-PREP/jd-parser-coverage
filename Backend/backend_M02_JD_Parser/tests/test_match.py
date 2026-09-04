@@ -45,7 +45,7 @@ def _resume(**overrides) -> dict:
         "confirmed": True,
         "parsed_skills": ["SQL", "Python"],
         "unresolved_skills": [],
-        "resolved_concepts": {"SQL": "concept:sql_basics"},
+        "resolved_concepts": {"SQL": "concept:sql_queries"},
         "red_flags": [],
         "entities": {
             "education": [
@@ -311,7 +311,7 @@ def test_a_requirement_the_resume_never_mentions_is_a_risk(matched, m01):
     That distinction is the entire value of this screen — a recruiter screening
     on keywords reads the resume, not the student.
     """
-    m01.up([_resume(parsed_skills=["SQL"], resolved_concepts={"SQL": "concept:sql_basics"})])
+    m01.up([_resume(parsed_skills=["SQL"], resolved_concepts={"SQL": "concept:sql_queries"})])
 
     report = matched()
 
@@ -340,7 +340,7 @@ def test_the_active_resume_is_the_one_compared(matched, m01):
     """
     stale = _resume(is_active=False, parsed_skills=["COBOL"], resolved_concepts={})
     live = _resume(
-        is_active=True, parsed_skills=["SQL"], resolved_concepts={"SQL": "concept:sql_basics"}
+        is_active=True, parsed_skills=["SQL"], resolved_concepts={"SQL": "concept:sql_queries"}
     )
     m01.up([stale, live])
 
@@ -392,7 +392,7 @@ def test_alternatives_do_not_inflate_the_denominator(matched, m01):
         [
             _resume(
                 parsed_skills=["Python", "SQL"],
-                resolved_concepts={"SQL": "concept:sql_basics"},
+                resolved_concepts={"SQL": "concept:sql_queries"},
             )
         ]
     )

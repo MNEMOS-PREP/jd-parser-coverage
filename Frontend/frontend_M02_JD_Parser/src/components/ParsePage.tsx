@@ -16,16 +16,21 @@
  * from a placement-portal email", and such a mail arrives as an attachment at
  * least as often as it arrives as a body a student can select.
  *
- * Doors 1 and 3 still do not exist, because neither has a backend — there is no
- * company picker, no role archetype and no drives feed. Rendering them greyed
- * out would be the honest-looking version of the same problem: a student
- * clicks, nothing happens, and the product looks broken rather than unfinished.
- * So they are named in a note instead, which is what the platform does
- * everywhere else — absent, not stubbed, and said out loud.
+ * All three doors now work. Door 1 is `CompanyDoor`, built against M15 rather
+ * than against a company table of M02's own — §3.2's fifth hard part is that
+ * "TCS", "Tata Consultancy Services" and "TCS Digital" are one company and
+ * several drives, and that keeping a second copy of that table is how the two
+ * drift apart.
+ *
+ * What is still missing behind door 1 is the placement-cell CALENDAR: M15
+ * knows which drives a company runs, not which ones are scheduled this month.
+ * Pre-loading that would mean most students never type anything at all.
  */
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+import { CompanyDoor } from "./CompanyDoor";
 
 import {
   useArchetypes,
@@ -110,6 +115,11 @@ export function ParsePage() {
           show where you stand against each one.
         </p>
       </header>
+
+      {/* Door 1. §2.3 calls the drive chips "the highest-value element on
+          this screen", and it is first because a student who has a drive on
+          the calendar should never have to find the posting. */}
+      <CompanyDoor />
 
       <Section label="Paste a JD">
         <Panel className="p-5">
@@ -333,34 +343,6 @@ export function ParsePage() {
               </ErrorNote>
             </div>
           )}
-        </Panel>
-      </Section>
-
-      <Section label="Not built yet">
-        <Panel tone="sunken" className="px-4 py-3.5">
-          <p className="text-sm text-ink-soft">
-            The spec&rsquo;s input screen has three doors. Two of them work.
-          </p>
-          <ul className="mt-2 space-y-1.5 text-sm text-ink-soft">
-            <li>
-              <strong className="font-medium text-ink">Pick a company</strong>{" "}
-              &mdash; needs the company + drive-variant table (§3.2). Not built.
-            </li>
-            <li>
-              <strong className="font-medium text-ink">
-                Campus-drive chips
-              </strong>{" "}
-              &mdash; needs the placement-cell calendar. Not built, and §2.3
-              calls it &ldquo;the highest-value element on this screen&rdquo;:
-              the placement cell already publishes the calendar, so pre-loading
-              it would mean most students never type anything at all.
-            </li>
-          </ul>
-          <p className="mt-2.5 text-xs text-ink-faint">
-            Listed rather than greyed out on purpose. A control that looks live
-            and does nothing reads as a broken product; a named gap reads as an
-            unfinished one.
-          </p>
         </Panel>
       </Section>
     </>

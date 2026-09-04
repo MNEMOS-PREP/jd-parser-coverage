@@ -222,6 +222,58 @@ export interface CompanyBrief {
   data_sufficiency: string;
 }
 
+/**
+ * One company a student can pick (§2.3 door 1).
+ *
+ * M15's spelling, proxied through M02 rather than fetched directly: a second
+ * origin in this client is a second CORS surface and a second place for the
+ * "M15 is down" message to be written differently.
+ */
+/**
+ * How students actually get into this module (AC-2.7).
+ *
+ * §13 asks for the drive-chip versus manual-paste ratio. It is the number that
+ * says whether door 1 earned its place: §2.3 claims pre-loading the drives
+ * means most students never type anything at all, and if the paste share does
+ * not move after the chips ship, that claim was wrong.
+ */
+export interface DoorUsage {
+  door: string;
+  /** What a student would call it — this renders on a screen a placement
+   *  officer reads, and "extracted_by=lexicon" is not a door. */
+  label: string;
+  count: number;
+  share: number;
+}
+
+export interface CompanyOption {
+  id: string;
+  name: string;
+  /** Every other spelling M15 resolves to this company — a student searching
+   *  "CTS" has to recognise "Cognizant" in the result. */
+  aliases: string[];
+  /** How many drive reports exist, shown BEFORE the student commits. */
+  report_count: number;
+}
+
+/**
+ * One drive chip — §2.3 calls these "the highest-value element on this screen".
+ *
+ * TCS NQT, TCS Digital and TCS Ninja are one company and three interviews, and
+ * the chip is the student saying which one they are sitting.
+ */
+export interface DriveOption {
+  id: string;
+  name: string;
+  company_id: string;
+  /** `null` when M15 names a role M02 has no archetype for. The chip still
+   *  shows its figures; it just cannot pre-fill a requirement set. */
+  archetype_id: string | null;
+  typical_package_lpa: number | null;
+  bond_months: number | null;
+  typical_locations: string[];
+}
+
 export interface JobDescription {
   id: string;
   company_name: string;
@@ -235,6 +287,12 @@ export interface JobDescription {
    * looking at one `id`, and this is why.
    */
   content_sha256: string;
+  /** The script the posting is written in (EC-2.6): `latin`, `devanagari`,
+   *  `tamil`, and so on. Detected from the letters, not declared. */
+  script: string;
+  /** How much of the document that script accounts for, as a share of its
+   *  letters. 1.0 for an empty document — nothing to detect is not a warning. */
+  script_share: number;
   /** The same labels as `requirements`, without the provenance. */
   required_skills: string[];
   /** §5's contract: each requirement with the span it was written at. */

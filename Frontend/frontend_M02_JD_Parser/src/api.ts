@@ -22,6 +22,9 @@ import { api } from "@ai/core";
 import { identityHeaders } from "./components/candidate";
 import type {
   CompanyBrief,
+  CompanyOption,
+  DoorUsage,
+  DriveOption,
   ArchetypeOut,
   Coverage,
   EffectiveRequirements,
@@ -44,9 +47,12 @@ export const m02Keys = {
   deps: ["m02", "deps"] as const,
   archetypes: ["m02", "archetypes"] as const,
   performance: ["m02", "performance"] as const,
+  doors: ["m02", "doors"] as const,
   sessionCoverage: (sessionId: string, candidateId: string) =>
     ["m02", "session-coverage", sessionId, candidateId] as const,
   jd: (jdId: string) => ["m02", "jd", jdId] as const,
+  companies: (q: string) => ["m02", "companies", q] as const,
+  drives: (companyId: string) => ["m02", "drives", companyId] as const,
   company: (jdId: string, candidateId: string) =>
     ["m02", "company", jdId, candidateId] as const,
   coverage: (jdId: string, candidateId: string) =>
@@ -183,6 +189,52 @@ export function usePlan(
  * to order the reported questions against this student's gaps, which is the
  * only personalised thing on the panel.
  */
+/**
+ * The companies a student can pick from (§2.3 door 1).
+ *
+ * Empty rather than an error when M15 is down — the screen renders either way
+ * and `/deps` is where the outage is named.
+ */
+/** AC-2.7: which of §2.3's three doors students come through. */
+export function useDoorUsage() {
+  return useQuery({
+    queryKey: m02Keys.doors,
+    retry: false,
+    queryFn: () => api.get<DoorUsage[]>("/v1/doors"),
+  });
+}
+
+export function useCompanies(q: string) {
+  return useQuery({
+    queryKey: m02Keys.companies(q),
+    retry: false,
+    queryFn: () =>
+      api.get<CompanyOption[]>(`/v1/companies?q=${encodeURIComponent(q)}`),
+  });
+}
+
+/** The drives one company runs. Fetched only once a company is chosen. */
+export function useDrives(companyId: string | undefined) {
+  return useQuery({
+    queryKey: m02Keys.drives(companyId ?? ""),
+    enabled: Boolean(companyId),
+    retry: false,
+    queryFn: () => api.get<DriveOption[]>(`/v1/companies/${companyId}/drives`),
+  });
+}
+
+/** Door 1: turn a chosen drive into a requirement set. */
+export function useParseFromDrive() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { company_id: string; drive_id: string }) =>
+      api.post<JobDescription>("/v1/jds/from-drive", body),
+    onSuccess: (jd) => {
+      client.setQueryData(m02Keys.jd(jd.id), jd);
+    },
+  });
+}
+
 export function useCompanyBrief(
   jdId: string | undefined,
   candidateId: string | undefined,

@@ -11,7 +11,13 @@
 
 import { DependencyTable } from "@ai/core";
 
-import { useDeps, useHealth, useModuleStatus, usePerformance } from "../api";
+import {
+  useDeps,
+  useDoorUsage,
+  useHealth,
+  useModuleStatus,
+  usePerformance,
+} from "../api";
 import {
   Field,
   Panel,
@@ -24,6 +30,7 @@ import {
 export function DepsPage() {
   const deps = useDeps();
   const perf = usePerformance();
+  const doors = useDoorUsage();
   const health = useHealth();
   const status = useModuleStatus();
 
@@ -110,6 +117,49 @@ export function DepsPage() {
           Measured over stored rows rather than a benchmark, because a
           benchmark measures the machine it ran on and §11's budget is a claim
           about what a student waits for. */}
+      {/* AC-2.7. The number that says whether door 1 earned its place: §2.3
+          claims pre-loading the drives means "most students never type
+          anything at all", and if the paste share does not move now that the
+          chips exist, the claim was wrong and the placement-cell calendar
+          behind it is not worth building either. */}
+      <Section
+        label="How students get in"
+        meta={
+          doors.data?.length
+            ? `${doors.data.reduce((n, d) => n + d.count, 0)} postings`
+            : undefined
+        }
+      >
+        {doors.data && doors.data.length === 0 && (
+          <Panel className="px-4 py-3">
+            <p className="text-sm text-ink-soft">
+              Nothing parsed yet, so there is no ratio &mdash; which is
+              different from a set of zeroes.
+            </p>
+          </Panel>
+        )}
+        {doors.data && doors.data.length > 0 && (
+          <Panel className="px-4 py-1">
+            <div className="divide-y divide-line">
+              {doors.data.map((door) => (
+                <div
+                  key={door.door}
+                  className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2"
+                >
+                  <span className="text-sm text-ink">{door.label}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="provenance">{door.count}</span>
+                    <span className="text-sm tabular-nums text-ink">
+                      {Math.round(door.share * 100)}%
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
+      </Section>
+
       <Section
         label="How long a parse takes"
         meta={
