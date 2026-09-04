@@ -1,5 +1,10 @@
 # M02 — TODO · JD Parser & Coverage Planner
 
+
+> **Completion: 91%** — 13 of 16 functional requirements met, 3 partially. From this module's own audited FR table. Functional requirements are not the whole spec: the acceptance gates, edge cases and screens are tracked separately below, and the remaining work is not spread evenly across them.
+>
+> _Method: `(met + ½ × partial) ÷ total`, from the FR table below, 2026-08-28. One measure applied the same way to all nineteen modules so they compare; it counts requirements, not screens or gates._
+
 Task list for taking **M02 JD Parser & Coverage Planner** to 100% of
 [M02_JD_Parser.md](M02_JD_Parser.md).
 
