@@ -42,6 +42,8 @@ class _FakeM04:
         self.concepts: list[dict] = []
         self.resolved: dict[str, str | None] = {}
         self.mastery: dict = {"measured": []}
+        #: Every request, so a test can ask who M02 said it was asking for.
+        self.requests: list = []
         self.down()
 
     def down(self):
@@ -59,6 +61,7 @@ class _FakeM04:
 
     def urlopen(self, req, timeout=None):
         url = req.full_url if hasattr(req, "full_url") else str(req)
+        self.requests.append(req)
         if url.endswith("/health"):
             # ai_core probes this, and `statuses(force=True)` re-probes rather
             # than trusting the seeded cache, so the fixture has to answer it.

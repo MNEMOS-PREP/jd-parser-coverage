@@ -139,3 +139,21 @@ def test_a_job_description_is_not_personal_data(anonymous):
     assert anonymous.get(f"/v1/jds/{jd_id}").status_code == 200
     assert anonymous.get("/v1/deps").status_code == 200
     assert anonymous.get("/health").status_code == 200
+
+
+def test_the_mastery_read_from_m04_is_made_as_the_student(m04_mastery):
+    """M04 refuses an anonymous caller on every candidate route since
+    2026-09-23. Until then it answered anybody, so M02 never said who it was
+    asking for — and the day M04 closed, every gap analysis would have lost
+    its mastery and reported every topic as unmeasured."""
+    from backend_M02_JD_Parser.router import get_candidate_mastery
+
+    fake = m04_mastery({"measured": []})
+    candidate = uuid.uuid4()
+
+    assert get_candidate_mastery(candidate) is not None
+
+    (read,) = [r for r in fake.requests if "/mastery" in getattr(r, "full_url", str(r))]
+    headers = {k.lower(): v for k, v in read.header_items()}
+    assert headers["x-candidate-id"] == str(candidate)
+    assert headers["x-role"] == "student"

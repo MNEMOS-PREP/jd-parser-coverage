@@ -212,18 +212,27 @@ def dependency_registry() -> DependencyRegistry:
     return DependencyRegistry.from_manifest(_MANIFEST)
 
 
-def _m04_get(path: str) -> Any | None:
+def _m04_get(path: str, candidate_id: uuid.UUID | str | None = None) -> Any | None:
     """GET from M04, or None.
 
     Probes first: `is_available` is cached, the call is not, and asking a dead
     port three times per request costs a socket timeout each time.
+
+    A candidate-scoped read forwards that student, exactly as M02 does when it
+    calls M01. M04 refuses an anonymous caller on every candidate route since
+    2026-09-23; before that it answered anybody, which is why this worked
+    without saying who was asking.
     """
     deps = dependency_registry()
     dep = deps.get("M04")
     if dep is None or not dep.base_url or not deps.is_available("M04"):
         return None
+    headers = {"User-Agent": USER_AGENT}
+    if candidate_id is not None:
+        headers.update({"X-Role": "student", "X-Candidate-Id": str(candidate_id)})
+    request = urllib.request.Request(f"{dep.base_url.rstrip('/')}{path}", headers=headers)
     try:
-        with urllib.request.urlopen(f"{dep.base_url.rstrip('/')}{path}", timeout=2.0) as response:
+        with urllib.request.urlopen(request, timeout=2.0) as response:
             return json.loads(response.read())
     except Exception:
         return None
@@ -263,7 +272,7 @@ def get_candidate_mastery(candidate_id: uuid.UUID) -> dict | None:
     `None` is "we did not ask anyone". Collapsing both to `{}` is what turned
     an outage into a coverage score of zero.
     """
-    return _m04_get(f"/v1/candidates/{candidate_id}/mastery")
+    return _m04_get(f"/v1/candidates/{candidate_id}/mastery", candidate_id)
 
 
 #: Whitespace is the only thing normalised away.
