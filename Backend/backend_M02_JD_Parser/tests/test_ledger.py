@@ -337,3 +337,113 @@ def test_a_session_with_nothing_recorded_says_so(client, m04):
     assert body["questions_asked"] == 0
     assert body["requirements"] == []
     assert body["jd_id"] is None
+
+
+# ---------------------------------------------------------------------------
+#  M13's half: a score addressed by turn
+# ---------------------------------------------------------------------------
+
+
+def _score(client, session_id, candidate, turn, **body):
+    body.setdefault("score", 0.75)
+    return client.post(
+        f"/v1/sessions/{session_id}/coverage/{candidate}/turns/{turn}/score", json=body
+    )
+
+
+def _ledger_rows(session_id):
+    from backend_M02_JD_Parser.app import app
+    from backend_M02_JD_Parser.ledger import CoverageLedger
+    from backend_M02_JD_Parser.router import get_db
+    from sqlmodel import select
+
+    db = next(app.dependency_overrides[get_db]())
+    return sorted(
+        (row.requirement_id, row.state, row.score)
+        for row in db.exec(
+            select(CoverageLedger).where(CoverageLedger.session_id == session_id)
+        ).all()
+    )
+
+
+def _asked(client, session_id, me, jd_id, turn, *requirements):
+    for requirement_id in requirements:
+        res = _record(
+            client, session_id, me,
+            jd_id=jd_id, requirement_id=requirement_id, state="asked", turn_id=str(turn),
+        )
+        assert res.status_code == 201, res.text
+
+
+def test_m13_scores_a_turn_without_knowing_its_requirements(client, m04):
+    """§6.6's second half had no route M13 could call: `POST /coverage` wants a
+    requirement id, and M13 knows only the turn. One question can bear on two
+    requirements; both move."""
+    jd_id = _jd(client)
+    session_id, me, turn = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    _asked(client, session_id, me, jd_id, turn, "R-1", "R-2")
+
+    res = _score(client, session_id, me, turn, score=0.75, evaluation_id=str(uuid.uuid4()))
+
+    assert res.status_code == 201, res.text
+    assert res.json()["applied"] == 2
+    body = _coverage(client, session_id, me)
+    assert body["scores"] == {"R-1": [0.75], "R-2": [0.75]}
+
+
+@pytest.mark.gate
+def test_arrival_order_cannot_change_the_ledger(client, m04):
+    """M06's `asked` row and M13's score leave two modules' outboxes on two
+    schedules. A score that arrives first is kept, not refused — and the ledger
+    that results is the same either way, so neither module has to wait."""
+    jd_id = _jd(client)
+    me = uuid.uuid4()
+
+    first_asked, turn_a = uuid.uuid4(), uuid.uuid4()
+    _asked(client, first_asked, me, jd_id, turn_a, "R-1")
+    assert _score(client, first_asked, me, turn_a, score=0.5).status_code == 201
+
+    first_scored, turn_b = uuid.uuid4(), uuid.uuid4()
+    early = _score(client, first_scored, me, turn_b, score=0.5)
+    assert early.status_code == 202, "early is not wrong; it must not look like a failure"
+    assert early.json()["parked"] is True
+    _asked(client, first_scored, me, jd_id, turn_b, "R-1")
+
+    assert _ledger_rows(first_asked) == _ledger_rows(first_scored)
+    assert _coverage(client, first_scored, me)["scores"] == {"R-1": [0.5]}
+
+
+def test_a_resent_score_appends_nothing(client, m04):
+    """M13 delivers at least once. The same evaluation twice is one score."""
+    jd_id = _jd(client)
+    session_id, me, turn = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    _asked(client, session_id, me, jd_id, turn, "R-1")
+    evaluation = str(uuid.uuid4())
+
+    _score(client, session_id, me, turn, score=0.5, evaluation_id=evaluation)
+    again = _score(client, session_id, me, turn, score=0.5, evaluation_id=evaluation)
+
+    assert again.json() == {
+        "turn_id": str(turn), "applied": 0, "parked": False, "duplicate": True,
+    }
+    assert [r for r in _ledger_rows(session_id) if r[1] == "scored"] == [("R-1", "scored", 0.5)]
+
+
+def test_a_rescore_appends_and_the_newest_wins(client, m04):
+    """"Scored 0.5, re-scored 0.75" is the sequence a dispute needs."""
+    jd_id = _jd(client)
+    session_id, me, turn = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    _asked(client, session_id, me, jd_id, turn, "R-1")
+
+    _score(client, session_id, me, turn, score=0.5, evaluation_id=str(uuid.uuid4()))
+    _score(client, session_id, me, turn, score=0.75, evaluation_id=str(uuid.uuid4()))
+
+    scored = [r for r in _ledger_rows(session_id) if r[1] == "scored"]
+    assert sorted(s for _, _, s in scored) == [0.5, 0.75]
+    assert _coverage(client, session_id, me)["scores"] == {"R-1": [0.75]}
+
+
+def test_a_score_is_on_zero_to_one(client, m04):
+    """A bare rubric category (0–4) means nothing to a ledger spanning rubrics."""
+    res = _score(client, uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), score=3)
+    assert res.status_code == 422

@@ -11,14 +11,12 @@
  * because they are the same question asked at different times, and two screens
  * would eventually disagree about what happened.
  *
- * ── Written by M05 and M13, read here ────────────────────────────────────────
+ * ── Written by M06 and M13, read here ────────────────────────────────────────
  *
- * Nothing on this page writes. M05 records `asked` when it selects a question
- * and M13 moves the row to `scored`; M02 owns the table because M02 made the
- * promise, but it is not the one keeping it.
- *
- * So the empty state is the ordinary one today, and it says which module has
- * not arrived rather than looking broken.
+ * Nothing on this page writes. M06 records `asked` and `answered` as the
+ * interview runs, and M13 sends each turn's score, which M02 turns into a
+ * `scored` row for every requirement the turn touched; M02 owns the table
+ * because M02 made the promise, but it is not the one keeping it.
  */
 
 import { Link, useParams } from "react-router-dom";
@@ -62,9 +60,9 @@ export function SessionCoveragePage() {
     return (
       <Empty title="Nothing recorded for this session yet">
         The ledger is written by the interview engine as it asks questions and
-        by the evaluation engine as it scores them. Neither is wired yet, so
-        there is nothing to read back &mdash; which is different from a session
-        that covered nothing.
+        by the evaluation engine as it scores them. Nothing has reached it for
+        this session yet &mdash; which is different from a session that covered
+        nothing.
         <div className="mt-3">
           <Link
             to="/"

@@ -19,6 +19,7 @@ import time
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -54,11 +55,15 @@ from backend_M02_JD_Parser.documents import UnreadableDocument, to_text
 from backend_M02_JD_Parser.edits import ACTIONS, NECESSITY, RequirementEdit, effective
 from backend_M02_JD_Parser.language import dominant_script
 from backend_M02_JD_Parser.ledger import (
+    ANSWERED,
+    ASKED,
     PLANNED,
     SCORED,
     STATES,
     CoverageLedger,
+    CoverageTurnScore,
     covered_counts,
+    owed_scored_rows,
     scores_by_requirement,
 )
 from backend_M02_JD_Parser.match import MatchReport, build_match
@@ -1914,7 +1919,128 @@ def record_coverage(
     session.add(event)
     session.commit()
     session.refresh(event)
+
+    # A score may have arrived first — M13's outbox and M06's drain on their
+    # own schedules. Applied now, so arrival order cannot change the ledger.
+    if event.turn_id is not None and event.state in (ASKED, ANSWERED):
+        apply_turn_score(session, session_id, candidate_id, event.turn_id)
+
     return {"id": str(event.id), "state": event.state, "recorded_at": event.updated_at}
+
+
+class TurnScoreIn(BaseModel):
+    """What M13 sends when it has scored a turn (`emit.coverage_update`)."""
+
+    score: float = Field(ge=0.0, le=1.0)
+    raw_category: int | None = None
+    n_categories: int | None = None
+    rubric_version: str | None = None
+    evaluation_id: uuid.UUID | None = None
+    scored_at: datetime | None = None
+
+
+def apply_turn_score(
+    session: Session, session_id: uuid.UUID, candidate_id: uuid.UUID, turn_id: uuid.UUID
+) -> int:
+    """Append the `scored` rows this turn's newest score is owed. Returns how many."""
+    score = session.exec(
+        select(CoverageTurnScore)
+        .where(CoverageTurnScore.session_id == session_id)
+        .where(CoverageTurnScore.candidate_id == candidate_id)
+        .where(CoverageTurnScore.turn_id == turn_id)
+        .order_by(CoverageTurnScore.recorded_at.desc())
+    ).first()
+    if score is None:
+        return 0
+    turn_rows = list(
+        session.exec(
+            select(CoverageLedger)
+            .where(CoverageLedger.session_id == session_id)
+            .where(CoverageLedger.candidate_id == candidate_id)
+            .where(CoverageLedger.turn_id == turn_id)
+        ).all()
+    )
+    owed = owed_scored_rows(turn_rows, score)
+    for jd_id, requirement_id in owed:
+        session.add(
+            CoverageLedger(
+                session_id=session_id,
+                candidate_id=candidate_id,
+                jd_id=jd_id,
+                requirement_id=requirement_id,
+                turn_id=turn_id,
+                state=SCORED,
+                score=score.score,
+            )
+        )
+    if owed:
+        session.commit()
+    return len(owed)
+
+
+@router.post(
+    "/sessions/{session_id}/coverage/{candidate_id}/turns/{turn_id}/score",
+    status_code=status.HTTP_201_CREATED,
+)
+def record_turn_score(
+    session_id: uuid.UUID,
+    candidate_id: uuid.UUID,
+    turn_id: uuid.UUID,
+    payload: TurnScoreIn,
+    response: Response,
+    session: Session = Depends(get_db),
+):
+    """M13 scored this turn: move every requirement it touched to `scored`.
+
+    §6.6's second half — *"When M13 scores that turn, the row moves to
+    `scored` with the score"* — which until now had no route M13 could call.
+    `POST /coverage/{candidate}` takes a requirement id, and M13 does not know
+    one: it knows the turn. M02 owns the mapping, so M02 does it.
+
+    **202 when nothing is known about the turn yet.** The score is kept and
+    applied when M06's `asked` row lands. It is not a 404 because it is not a
+    mistake: two modules' queues drain in whatever order they drain in, and a
+    404 here would make M13 retry into a hold for a row that was merely early.
+    """
+    duplicate = (
+        payload.evaluation_id is not None
+        and session.exec(
+            select(CoverageTurnScore)
+            .where(CoverageTurnScore.turn_id == turn_id)
+            .where(CoverageTurnScore.evaluation_id == payload.evaluation_id)
+        ).first()
+        is not None
+    )
+    if not duplicate:
+        session.add(
+            CoverageTurnScore(
+                session_id=session_id,
+                candidate_id=candidate_id,
+                turn_id=turn_id,
+                score=payload.score,
+                raw_category=payload.raw_category,
+                n_categories=payload.n_categories,
+                rubric_version=payload.rubric_version,
+                evaluation_id=payload.evaluation_id,
+                scored_at=payload.scored_at,
+            )
+        )
+        session.commit()
+
+    applied = apply_turn_score(session, session_id, candidate_id, turn_id)
+    known = session.exec(
+        select(CoverageLedger)
+        .where(CoverageLedger.session_id == session_id)
+        .where(CoverageLedger.turn_id == turn_id)
+    ).first()
+    if known is None:
+        response.status_code = status.HTTP_202_ACCEPTED
+    return {
+        "turn_id": str(turn_id),
+        "applied": applied,
+        "parked": known is None,
+        "duplicate": duplicate,
+    }
 
 
 @router.get("/sessions/{session_id}/coverage/{candidate_id}")

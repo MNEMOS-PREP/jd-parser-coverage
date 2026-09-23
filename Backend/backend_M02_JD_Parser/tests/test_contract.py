@@ -49,6 +49,21 @@ _FRONTEND = _REPO / "Frontend" / "frontend_M02_JD_Parser" / "src"
 #: nobody got round to wiring.
 ALIASES: dict[tuple[str, str], str] = {}
 
+#: Routes whose caller is another MODULE, not this frontend — with the file
+#: that calls them. Not an escape hatch: each entry names its caller, and
+#: `test_every_service_route_has_its_caller` reads that file when the sibling
+#: repo is checked out, so a caller that stops calling fails here too.
+#:
+#: The alternative, a hook mounted on a screen with `void hook`, satisfies the
+#: letter of the gate and tells the next reader the screen uses it.
+SERVICE_ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
+    ("POST", "/v1/sessions/{session_id}/coverage/{candidate_id}/turns/{turn_id}/score"): (
+        "Evaluation_Engine",
+        "Backend/backend_M13_Evaluation_Engine/emit.py",
+        "/turns/{turn_id}/score",
+    ),
+}
+
 
 def _routes() -> set[tuple[str, str]]:
     """Every path this app serves.
@@ -156,10 +171,34 @@ def test_every_endpoint_has_a_client():
     orphans = sorted(
         f"{method} {path}"
         for method, path in _routes()
-        if (method, path) not in ALIASES and not _client_exists_for(path, api)
+        if (method, path) not in ALIASES
+        and (method, path) not in SERVICE_ROUTES
+        and not _client_exists_for(path, api)
     )
 
     assert not orphans, "backend routes with no client in api.ts:\n  " + "\n  ".join(orphans)
+
+
+@pytest.mark.gate
+def test_every_service_route_has_its_caller():
+    """A service route is exempt from needing a screen only while something
+    calls it. Checked against the caller's own source when that repo sits
+    beside this one — the platform's layout (`launch.ps1`) — and skipped, by
+    name, when it does not."""
+    served = _routes()
+    missing_callers = []
+    for route, (repo, file, fragment) in SERVICE_ROUTES.items():
+        assert route in served, f"{route} is listed as a service route and not served"
+        caller = _REPO.parent / repo / file
+        if not caller.exists():
+            continue
+        # The caller builds the URL with its own variable names; the shape is
+        # what must survive: `/turns/{turn_id}/score` → `/turns/` … `/score`.
+        head, _, tail = fragment.partition("{turn_id}")
+        source = caller.read_text(encoding="utf-8")
+        if head not in source or tail not in source:
+            missing_callers.append(f"{route} — {repo}/{file} no longer builds {fragment}")
+    assert not missing_callers, "\n".join(missing_callers)
 
 
 @pytest.mark.gate

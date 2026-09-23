@@ -106,6 +106,65 @@ class CoverageLedger(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_utcnow)
 
 
+class CoverageTurnScore(SQLModel, table=True):
+    """A turn's score as M13 sends it — addressed by TURN, not by requirement.
+
+    M13 knows which turn it scored and nothing about M02's requirement ids, and
+    should not: M06 already told M02 which requirements a question was about
+    when it wrote the turn's `asked` row. So the score is kept here against the
+    turn, and M02 does the mapping — appending one `scored` ledger row per
+    requirement the turn touched.
+
+    **Order-independent on purpose.** M06's ledger rows and M13's scores leave
+    two different modules' outboxes on two different schedules, so a score can
+    arrive before the `asked` row it belongs to. It is kept rather than refused,
+    and applied when the row lands (`router.apply_turn_score`). Either arrival
+    order produces the same ledger, which is what removes the need for the two
+    outboxes to coordinate at all.
+
+    Append-only, like the ledger: a re-score is a new row, and the newest wins.
+    """
+
+    __tablename__ = "coverage_turn_score"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    session_id: uuid.UUID = Field(index=True)
+    candidate_id: uuid.UUID = Field(index=True)
+    turn_id: uuid.UUID = Field(index=True)
+    #: 0..1. M13 normalises, because one ledger spans rubrics of different
+    #: scales; the category and its scale are kept beside it.
+    score: float
+    raw_category: int | None = None
+    n_categories: int | None = None
+    rubric_version: str | None = None
+    #: M13's evaluation. A resend of the same evaluation is a no-op.
+    evaluation_id: uuid.UUID | None = Field(default=None, index=True)
+    scored_at: datetime | None = None
+    recorded_at: datetime = Field(default_factory=_utcnow)
+
+
+def owed_scored_rows(
+    turn_rows: list[CoverageLedger], score: CoverageTurnScore
+) -> list[tuple[uuid.UUID, str]]:
+    """`(jd_id, requirement_id)` pairs this turn still owes a `scored` row.
+
+    One per requirement the turn touched. A requirement whose newest `scored`
+    row already carries this score owes nothing — so applying the same score
+    twice, from a resend or from both arrival orders, appends nothing twice.
+    """
+    touched: dict[tuple[uuid.UUID, str], list[CoverageLedger]] = {}
+    for row in turn_rows:
+        if row.state in (ASKED, ANSWERED, SCORED):
+            touched.setdefault((row.jd_id, row.requirement_id), []).append(row)
+    owed = []
+    for key, rows in touched.items():
+        scored = sorted((r for r in rows if r.state == SCORED), key=lambda r: r.updated_at)
+        if scored and scored[-1].score == score.score:
+            continue
+        owed.append(key)
+    return owed
+
+
 def current(rows: list[CoverageLedger]) -> dict[tuple[str, str], CoverageLedger]:
     """The latest state of each turn, keyed by `(requirement_id, turn_id)`.
 
