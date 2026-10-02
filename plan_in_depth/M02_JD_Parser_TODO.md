@@ -27,6 +27,20 @@ Task list for taking **M02 JD Parser & Coverage Planner** to 100% of
 
 Legend: ✅ done · 🟡 partly done · ⬜ not started
 
+### 2026-10-02 — asks from M06, found running the full chain live
+
+- ⬜ **The first plan for a posting took 4.7 s.** `POST /v1/jds/{id}/plan/{candidate}`,
+  measured from M06 on the first live run of M02 → M06 → M05 → M13 → M04. M06
+  waited 3 s — its budget for a call made on a turn — so every session planned
+  on the even split and told the student *"the planner is offline"* while M02
+  was up. M06 now gives plan-time calls 20 s, but a student is watching that
+  spinner: precompute what the plan needs at parse time, or publish the
+  expected latency in `/v1/deps` so a caller can budget for it.
+- ⬜ **Link "practise for this role" to `/mock?jd={id}`.** M06's setup honours
+  `?jd=` since its day 13 and tailors the session to the posting.
+- ⬜ (standing) The coverage ledger's docstring should say that M06 is the
+  writer of `asked` and `answered`.
+
 ---
 
 ## 0. Ideas and scouting
