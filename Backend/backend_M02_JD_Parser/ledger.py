@@ -13,7 +13,7 @@ Until now M02 produced a plan and nothing read it back. A plan nobody checks is
 an intention: it says four questions should be asked about DBMS, and if the
 session asks none, no part of this platform notices.
 
-── Why M02 owns the table when M05 and M13 do the writing ──────────────────────
+── Why M02 owns the table when M06 and M13 do the writing ──────────────────────
 
 Because M02 is the module that made the promise. The plan is its output, the
 requirement ids are its ids, and the weights the re-prioritisation reads are
@@ -21,7 +21,13 @@ its weights. A ledger living in M05 would be M05 keeping score of somebody
 else's commitment in somebody else's vocabulary.
 
 Which means this table has to exist BEFORE either writer does. The endpoints
-here are the contract M05 and M13 are written against, not a client of theirs.
+here are the contract M06 and M13 are written against, not a client of theirs.
+
+(§6.6 said M05 writes `asked`. It cannot: M05 has no HTTP client, and a
+selected question is not an asked one — a session can end in between. M06 is
+the only module that knows a question reached the student, so M06 writes
+`asked`, `answered` and `skipped`, and M13 writes `scored`. Corrected
+2026-10-02, from M06's standing ask.)
 
 ── Identity: forwarded, not asserted ───────────────────────────────────────────
 
@@ -29,10 +35,10 @@ here are the contract M05 and M13 are written against, not a client of theirs.
 added in one module is a role the other eighteen do not know how to refuse."*
 There is no `service` role and this file does not invent one.
 
-A ledger write is session-scoped, a session belongs to a candidate, and M05
+A ledger write is session-scoped, a session belongs to a candidate, and M06
 writing `asked` is acting on that candidate's behalf. So these endpoints are
 candidate-scoped like every other personal route here, `enforce_access` gates
-them without being asked to, and M05 forwards the student's identity exactly as
+them without being asked to, and M06 forwards the student's identity exactly as
 M02 forwards it to M01. One pattern, already proven in this repository, and no
 second way to authenticate.
 
@@ -169,7 +175,7 @@ def current(rows: list[CoverageLedger]) -> dict[tuple[str, str], CoverageLedger]
     """The latest state of each turn, keyed by `(requirement_id, turn_id)`.
 
     Furthest-through wins rather than newest-written. An `answered` event that
-    arrives after a `scored` one is a late duplicate — M13 and M05 are separate
+    arrives after a `scored` one is a late duplicate — M13 and M06 are separate
     services and their clocks are not ordered — and letting it win would move a
     scored turn backwards.
     """

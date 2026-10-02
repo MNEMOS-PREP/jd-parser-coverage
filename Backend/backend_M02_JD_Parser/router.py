@@ -26,7 +26,7 @@ from typing import Any
 
 from ai_core.concepts import normalise_alias
 from ai_core.dependencies import DependencyRegistry, DependencyStatus
-from ai_core.identity import Principal, may_see, principal_from_headers
+from ai_core.guard import candidate_guard
 from ai_core.mastery import SE_PRIOR
 from ai_core.models import USER_AGENT
 from fastapi import (
@@ -35,7 +35,6 @@ from fastapi import (
     File,
     Form,
     HTTPException,
-    Request,
     Response,
     UploadFile,
     status,
@@ -91,40 +90,18 @@ def get_db():
         yield session
 
 
-def enforce_access(request: Request) -> Principal | None:
-    """Who is asking, and may they have what this route is about?
-
-    Declared once, on the ROUTER, so it runs on every endpoint in this module
-    including the ones nobody has written yet. `ai_core.identity` makes the
-    check one call precisely because a per-route check is the one somebody
-    omits on the sixteenth endpoint, and the sixteenth endpoint is the one that
-    leaks. A router-level dependency cannot be omitted by forgetting.
-
-    ── What is candidate-scoped here, and what is not ──────────────────────────
-
-    Only `candidate_id`. A JOB DESCRIPTION is not personal data — it is a public
-    posting a company wrote, and two students preparing for the same drive
-    should share one parse rather than each holding a private copy of a public
-    document (FR-2.12 makes that explicit by caching across students). So
-    `/jds/parse` and `/jds/{id}` stay open.
-
-    `/jds/{id}/coverage/{candidate_id}` is the opposite: it is a gap analysis of
-    one named student against that posting, and it answered for anybody who
-    guessed a UUID.
-    """
-    principal = principal_from_headers(dict(request.headers))
-
-    candidate_id = request.path_params.get("candidate_id")
-    if candidate_id is None:
-        return principal
-
-    decision = may_see(principal, str(candidate_id))
-    if not decision:
-        # 403 with the reason, not 404. Pretending the record does not exist
-        # would be a lie to the student it is about.
-        raise HTTPException(status_code=403, detail=decision.reason)
-
-    return principal
+#: Who is asking, and may they have what this route is about — Platform_Core's
+#: `candidate_guard` (v0.11.0), on the ROUTER so a route nobody has written yet
+#: is covered. M02 wrote its own copy of this check before Platform_Core had
+#: one; copies drift, so this is the shared one.
+#:
+#: Only a student is candidate-scoped here. A JOB DESCRIPTION is not personal
+#: data — it is a public posting a company wrote, and two students preparing for
+#: the same drive should share one parse rather than each holding a private copy
+#: (FR-2.12 caches across students), so `/jds/parse` and `/jds/{id}` stay open.
+#: `/jds/{id}/coverage/{candidate_id}` is the opposite: a gap analysis of one
+#: named student, which once answered for anybody who guessed a UUID.
+enforce_access = candidate_guard()
 
 
 log = logging.getLogger("uvicorn.error")
@@ -1235,9 +1212,15 @@ class DriveOption(BaseModel):
     typical_locations: list[str] = Field(default_factory=list)
 
 
-@router.get("/companies", response_model=list[CompanyOption], tags=["meta"])
+@router.get("/doors/companies", response_model=list[CompanyOption], tags=["meta"])
 def list_companies(q: str = ""):
     """The companies a student can pick from (§2.3 door 1).
+
+    Under `/doors` since 2026-10-02. It was `/v1/companies`, a noun M15 owns,
+    so Platform_Shell — which routes by the first path segment — sent the
+    picker's request to M15 and rendered M15's answer in M02's shape. The
+    ledger moved the same day, from `/v1/sessions/…` (M05's noun) to
+    `/v1/coverage/…`.
 
     A proxy onto M15 rather than a table of M02's own. §3.2's fifth hard part
     is that "TCS", "Tata Consultancy Services" and "TCS Digital" are one
@@ -1263,7 +1246,9 @@ def list_companies(q: str = ""):
     ]
 
 
-@router.get("/companies/{company_id}/drives", response_model=list[DriveOption], tags=["meta"])
+@router.get(
+    "/doors/companies/{company_id}/drives", response_model=list[DriveOption], tags=["meta"]
+)
 def list_drives(company_id: str):
     """The drives this company runs — §2.3's "highest-value element".
 
@@ -1853,7 +1838,7 @@ def performance(session: Session = Depends(get_db)):
 
 
 class LedgerEventIn(BaseModel):
-    """One turn's progress, written by M05 or M13.
+    """One turn's progress, written by M06 or M13.
 
     `turn_id` is optional only for `planned`. Every other state is about a
     question that exists, and a `scored` row with no turn cannot be disputed
@@ -1868,7 +1853,7 @@ class LedgerEventIn(BaseModel):
 
 
 @router.post(
-    "/sessions/{session_id}/coverage/{candidate_id}",
+    "/coverage/{session_id}/{candidate_id}",
     status_code=status.HTTP_201_CREATED,
 )
 def record_coverage(
@@ -1882,7 +1867,7 @@ def record_coverage(
     §6.6: *"When M5 selects a question, it writes `coverage_ledger(...,
     state='asked')`. When M13 scores that turn, the row moves to `scored`."*
 
-    M02 owns this table although M05 and M13 do the writing, because M02 made
+    M02 owns this table although M06 and M13 do the writing, because M02 made
     the promise: the plan is its output, the requirement ids are its ids, and
     the weights the re-prioritisation reads are its weights. Which means the
     endpoint has to exist BEFORE either writer does — this is the contract they
@@ -1988,7 +1973,7 @@ def apply_turn_score(
 
 
 @router.post(
-    "/sessions/{session_id}/coverage/{candidate_id}/turns/{turn_id}/score",
+    "/coverage/{session_id}/{candidate_id}/turns/{turn_id}/score",
     status_code=status.HTTP_201_CREATED,
 )
 def record_turn_score(
@@ -2052,7 +2037,7 @@ def record_turn_score(
     }
 
 
-@router.get("/sessions/{session_id}/coverage/{candidate_id}")
+@router.get("/coverage/{session_id}/{candidate_id}")
 def session_coverage(
     session_id: uuid.UUID,
     candidate_id: uuid.UUID,

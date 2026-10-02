@@ -209,7 +209,7 @@ export function useCompanies(q: string) {
     queryKey: m02Keys.companies(q),
     retry: false,
     queryFn: () =>
-      api.get<CompanyOption[]>(`/v1/companies?q=${encodeURIComponent(q)}`),
+      api.get<CompanyOption[]>(`/v1/doors/companies?q=${encodeURIComponent(q)}`),
   });
 }
 
@@ -219,7 +219,7 @@ export function useDrives(companyId: string | undefined) {
     queryKey: m02Keys.drives(companyId ?? ""),
     enabled: Boolean(companyId),
     retry: false,
-    queryFn: () => api.get<DriveOption[]>(`/v1/companies/${companyId}/drives`),
+    queryFn: () => api.get<DriveOption[]>(`/v1/doors/companies/${companyId}/drives`),
   });
 }
 
@@ -452,13 +452,13 @@ export function useSessionCoverage(
     retry: false,
     queryFn: () =>
       api.get<SessionCoverage>(
-        `/v1/sessions/${sessionId}/coverage/${candidateId}`,
+        `/v1/coverage/${sessionId}/${candidateId}`,
       ),
   });
 }
 
 /**
- * Record a turn's progress. Written by M05 and M13, not by this frontend.
+ * Record a turn's progress. Written by M06 and M13, not by this frontend.
  *
  * The hook exists because M02 owns the endpoint and the contract gate requires
  * every route to have a client — and because the session screen will need to
@@ -472,7 +472,7 @@ export function useRecordCoverage(
   return useMutation({
     mutationFn: (body: LedgerEventIn) =>
       api.post<{ id: string; state: string }>(
-        `/v1/sessions/${sessionId}/coverage/${candidateId}`,
+        `/v1/coverage/${sessionId}/${candidateId}`,
         body,
       ),
     onSuccess: () => {

@@ -57,7 +57,7 @@ ALIASES: dict[tuple[str, str], str] = {}
 #: The alternative, a hook mounted on a screen with `void hook`, satisfies the
 #: letter of the gate and tells the next reader the screen uses it.
 SERVICE_ROUTES: dict[tuple[str, str], tuple[str, str, str]] = {
-    ("POST", "/v1/sessions/{session_id}/coverage/{candidate_id}/turns/{turn_id}/score"): (
+    ("POST", "/v1/coverage/{session_id}/{candidate_id}/turns/{turn_id}/score"): (
         "Evaluation_Engine",
         "Backend/backend_M13_Evaluation_Engine/emit.py",
         "/turns/{turn_id}/score",

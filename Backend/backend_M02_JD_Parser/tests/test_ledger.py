@@ -38,11 +38,11 @@ def _jd(client) -> str:
 
 
 def _record(client, session_id, candidate, **body):
-    return client.post(f"/v1/sessions/{session_id}/coverage/{candidate}", json=body)
+    return client.post(f"/v1/coverage/{session_id}/{candidate}", json=body)
 
 
 def _coverage(client, session_id, candidate):
-    res = client.get(f"/v1/sessions/{session_id}/coverage/{candidate}")
+    res = client.get(f"/v1/coverage/{session_id}/{candidate}")
     assert res.status_code == 200, res.text
     return res.json()
 
@@ -324,7 +324,7 @@ def test_a_student_cannot_read_another_students_session(client, m04):
     from fastapi.testclient import TestClient
 
     stranger = TestClient(app, headers={"X-Role": "student", "X-Candidate-Id": str(uuid.uuid4())})
-    res = stranger.get(f"/v1/sessions/{uuid.uuid4()}/coverage/{uuid.uuid4()}")
+    res = stranger.get(f"/v1/coverage/{uuid.uuid4()}/{uuid.uuid4()}")
 
     assert res.status_code == 403
 
@@ -347,7 +347,7 @@ def test_a_session_with_nothing_recorded_says_so(client, m04):
 def _score(client, session_id, candidate, turn, **body):
     body.setdefault("score", 0.75)
     return client.post(
-        f"/v1/sessions/{session_id}/coverage/{candidate}/turns/{turn}/score", json=body
+        f"/v1/coverage/{session_id}/{candidate}/turns/{turn}/score", json=body
     )
 
 

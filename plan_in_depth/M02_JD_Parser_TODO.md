@@ -38,8 +38,24 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
   expected latency in `/v1/deps` so a caller can budget for it.
 - ⬜ **Link "practise for this role" to `/mock?jd={id}`.** M06's setup honours
   `?jd=` since its day 13 and tailors the session to the posting.
-- ⬜ (standing) The coverage ledger's docstring should say that M06 is the
-  writer of `asked` and `answered`.
+- ✅ The coverage ledger's docstring now says M06 is the writer of `asked`,
+  `answered` and `skipped`, and M13 of `scored` (2026-10-02).
+
+### 2026-10-02 — the shell, the guard, the pin
+
+- ✅ **Platform_Core v0.9.1 → v0.11.0**, on both halves.
+- ✅ **The router guard is Platform_Core's** `candidate_guard`, replacing
+  M02's hand-written copy, so copies cannot drift. Since v0.11.0 it also reads
+  a student named in the query. A gate runs the shared stranger check.
+- ✅ **Every /v1 noun M02 serves is routed to M02 by the shell.**
+  - The company picker moved from `/v1/companies` (M15's noun) to
+    `/v1/doors/companies…`.
+  - The ledger moved from `/v1/sessions/{s}/coverage/{c}…` (M05's noun) to
+    `/v1/coverage/{s}/{c}…`. M06 and M13 call the new paths.
+  - The shell's table gained `archetypes`, `coverage`, `doors` and
+    `performance`. Three of those were served by M02 and routed by nobody.
+  - `tests/test_shell_nouns.py` reads the shell's live table, and fails on
+    a noun in either direction.
 
 ---
 

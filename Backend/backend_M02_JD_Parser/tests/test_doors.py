@@ -108,7 +108,7 @@ def test_the_company_list_carries_the_aliases_a_student_might_search(client, m15
     """A student searching "CTS" has to recognise "Cognizant" in the result."""
     m15_drives()
 
-    rows = client.get("/v1/companies?q=tcs").json()
+    rows = client.get("/v1/doors/companies?q=tcs").json()
 
     assert rows[0]["name"] == "Tata Consultancy Services"
     assert "TCS" in rows[0]["aliases"]
@@ -120,7 +120,7 @@ def test_the_drives_are_the_chips_and_carry_their_figures(client, m15_drives):
     student click to find out what they are picking."""
     m15_drives()
 
-    drives = client.get(f"/v1/companies/{COMPANY_ID}/drives").json()
+    drives = client.get(f"/v1/doors/companies/{COMPANY_ID}/drives").json()
 
     digital = next(d for d in drives if d["name"] == "Digital")
     assert digital["typical_package_lpa"] == 7.0
@@ -138,7 +138,7 @@ def test_m15s_archetype_is_translated_into_m02s(client, m15_drives):
     """
     m15_drives()
 
-    drives = client.get(f"/v1/companies/{COMPANY_ID}/drives").json()
+    drives = client.get(f"/v1/doors/companies/{COMPANY_ID}/drives").json()
 
     assert all(d["archetype_id"] == "sde_1" for d in drives)
 
@@ -148,8 +148,8 @@ def test_m15_down_is_an_empty_list_not_an_error(client, m15_drives):
     would take the whole input screen down over an optional one."""
     m15_drives(available=False)
 
-    assert client.get("/v1/companies").json() == []
-    assert client.get(f"/v1/companies/{COMPANY_ID}/drives").json() == []
+    assert client.get("/v1/doors/companies").json() == []
+    assert client.get(f"/v1/doors/companies/{COMPANY_ID}/drives").json() == []
 
 
 # ---------------------------------------------------------------------------
