@@ -3,11 +3,21 @@
 The concept ids below are seeded, not resolved — nobody asked M04 — so they
 carry `offline_fallback` provenance like any other unconfirmed id. Seed data
 that claims a stronger source than it has is how a demo starts lying.
+
+Safe to run again (2026-10-03): each JD's id is derived from its company and
+role, an existing row is left alone, and the tables are created first so this
+works before the module has ever started. Each run used to add both again.
+`Platform_Shell/start.bat seed` runs it with every other module's seed.
 """
+
+import uuid
 
 from backend_M02_JD_Parser.app import engine
 from backend_M02_JD_Parser.models import JobDescription
-from sqlmodel import Session
+from sqlmodel import Session, SQLModel, select
+
+#: Seeded JDs are named by what they are, so a second run finds the first.
+_SEED = uuid.UUID("5eed0000-0000-4000-8000-000000000002")
 
 
 def seed():
@@ -54,11 +64,27 @@ def seed():
         ),
     ]
 
+    for j in jds:
+        j.id = uuid.uuid5(_SEED, f"{j.company_name}|{j.role_title}")
+    SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
-        for j in jds:
-            session.add(j)
+        # By id, and by name: a database seeded by the old script holds the
+        # same JDs under random ids.
+        added = [
+            j
+            for j in jds
+            if session.get(JobDescription, j.id) is None
+            and session.exec(
+                select(JobDescription).where(
+                    JobDescription.company_name == j.company_name,
+                    JobDescription.role_title == j.role_title,
+                )
+            ).first()
+            is None
+        ]
+        session.add_all(added)
         session.commit()
-    print("M02 Seed completed successfully.")
+    print(f"M02 seed: {len(added)} added, {len(jds) - len(added)} already there.")
 
 
 if __name__ == "__main__":
