@@ -13,7 +13,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { SEEDED_CANDIDATE_ID, ensureSession } from "@ai/core";
 
-import { m02Routes } from "./routes";
+import { DepsPage } from "./components/DepsPage";
+import { M02_HOME, m02Routes } from "./routes";
 import { AppShell } from "./ui/AppShell";
 // One stylesheet, on purpose: theme.css imports @ai/core/styles.css itself so
 // Tailwind sees a single entry graph and generates utilities from both token
@@ -37,8 +38,10 @@ createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <AppShell>
           <Routes>
+            <Route index element={<Navigate to={M02_HOME} replace />} />
             {m02Routes}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/deps" element={<DepsPage />} />
+            <Route path="*" element={<Navigate to={M02_HOME} replace />} />
           </Routes>
         </AppShell>
       </BrowserRouter>

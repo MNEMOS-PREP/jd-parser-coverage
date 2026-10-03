@@ -51,7 +51,7 @@ export function MatchConfirmPage() {
         The id in the URL does not match a stored JD.
         <div className="mt-3">
           <Link
-            to="/"
+            to="/jd"
             className="text-sm font-medium text-brand hover:text-brand-hover"
           >
             Paste one &rarr;

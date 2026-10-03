@@ -65,7 +65,7 @@ export function SessionCoveragePage() {
         nothing.
         <div className="mt-3">
           <Link
-            to="/"
+            to="/jd"
             className="text-sm font-medium text-brand hover:text-brand-hover"
           >
             Paste a job description &rarr;

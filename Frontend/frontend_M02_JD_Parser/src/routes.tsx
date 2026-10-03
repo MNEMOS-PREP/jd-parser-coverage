@@ -8,16 +8,24 @@
 
 import { Route } from "react-router-dom";
 
-import { DepsPage } from "./components/DepsPage";
 import { JdPage } from "./components/JdPage";
 import { MatchConfirmPage } from "./components/MatchConfirmPage";
 import { MatchPage } from "./components/MatchPage";
 import { SessionCoveragePage } from "./components/SessionCoveragePage";
 import { ParsePage } from "./components/ParsePage";
 
+/** Where this module's front door is, standalone and in the shell alike. */
+export const M02_HOME = "/jd";
+
+/*
+  No index route and no /deps (2026-10-04). The index belongs to whoever hosts
+  this tree — the shell's Today, or the standalone app's redirect to
+  M02_HOME — and the shell mounts one /deps for every module. That is what
+  lets Platform_Shell mount this tree whole instead of two screens by name.
+*/
 export const m02Routes = (
   <Route key="m02">
-    <Route index element={<ParsePage />} />
+    <Route path="/jd" element={<ParsePage />} />
     <Route path="/jds/:jdId" element={<JdPage />} />
     {/* Confirm before analyse. This is the first screen in the platform that
         reads a student's RESUME to say something about their chances, and
@@ -28,6 +36,5 @@ export const m02Routes = (
     {/* FR-2.11. Written by M05 as it asks and M13 as it scores; read here.
         M02 owns the table because M02 made the promise. */}
     <Route path="/sessions/:sessionId" element={<SessionCoveragePage />} />
-    <Route path="/deps" element={<DepsPage />} />
   </Route>
 );

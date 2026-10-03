@@ -8,7 +8,7 @@
  * measured is not zero" stops being true in one of them.
  */
 
-export { m02Routes } from "./routes";
+export { M02_HOME, m02Routes } from "./routes";
 export { M02_NAV } from "./nav";
 export { AppShell } from "./ui/AppShell";
 export { CoveragePanel } from "./components/CoveragePanel";

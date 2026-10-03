@@ -25,6 +25,8 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { Icon, PageHeader } from "@ai/core";
+
 import {
   useCoverage,
   useEditRequirement,
@@ -73,7 +75,7 @@ export function JdPage() {
         fresh id.
         <div className="mt-3">
           <Link
-            to="/"
+            to="/jd"
             className="text-sm font-medium text-brand hover:text-brand-hover"
           >
             Paste a JD &rarr;
@@ -94,15 +96,32 @@ export function JdPage() {
 
   return (
     <>
-      <header className="mb-8">
-        <p className="rule-label">{data.company_name}</p>
-        <h1 className="mt-0.5 text-display font-semibold text-ink">
-          {data.role_title}
-        </h1>
-        <div className="mt-2.5 max-w-2xl">
-          <ScanSourceNote scannedAgainst={data.scanned_against} />
-        </div>
-      </header>
+      {/* 2026-10-04: the page a student reads a posting on had no way to
+          practise for it — M06 has read `?jd=` since day one, and nothing
+          linked to it. The interview it starts is planned from THIS
+          student's requirements, corrections included. */}
+      <div className="mb-8">
+        <PageHeader
+          eyebrow={data.company_name}
+          title={data.role_title}
+          actions={
+            <Link
+              to={`/mock?${new URLSearchParams({
+                jd: data.id,
+                label: [data.role_title, data.company_name].filter(Boolean).join(" · "),
+              })}`}
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-hover"
+            >
+              <Icon name="mic" size={16} />
+              Practise for this job
+            </Link>
+          }
+        >
+          <div className="max-w-2xl">
+            <ScanSourceNote scannedAgainst={data.scanned_against} />
+          </div>
+        </PageHeader>
+      </div>
 
       {/* EC-2.6. Not an error and not styled as one. The posting IS parsed —
           the model pass reads Devanagari without being asked to — and what is

@@ -30,6 +30,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { PageHeader } from "@ai/core";
+
 import { CompanyDoor } from "./CompanyDoor";
 
 import {
@@ -105,16 +107,18 @@ export function ParsePage() {
 
   return (
     <>
-      <header className="mb-8">
-        <h1 className="text-display font-semibold text-ink">
-          What are you preparing for?
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-ink-soft">
-          Paste the job description &mdash; the messy placement-cell email is
-          fine, that is the normal case. We read the requirements out of it and
-          show where you stand against each one.
-        </p>
-      </header>
+      <div className="mb-8">
+        <PageHeader
+          title="What are you preparing for?"
+          subtitle="Pick a company's drive, or paste the job description — the placement-cell email is fine."
+          how={
+            <p>
+              We read the requirements out of the posting and show where you stand against each
+              one. Then you can practise an interview planned from exactly those requirements.
+            </p>
+          }
+        />
+      </div>
 
       {/* Door 1. §2.3 calls the drive chips "the highest-value element on
           this screen", and it is first because a student who has a drive on
