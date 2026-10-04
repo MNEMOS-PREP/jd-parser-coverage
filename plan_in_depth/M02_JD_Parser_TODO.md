@@ -27,6 +27,15 @@ Task list for taking **M02 JD Parser & Coverage Planner** to 100% of
 
 Legend: ✅ done · 🟡 partly done · ⬜ not started
 
+### 2026-10-04 — practise for this job
+
+- ✅ **"Practise for this job"** on the posting page opens M06's interview
+  setup, planned from this student's requirements for this posting (`?jd=`,
+  which M06 has read since day one and nothing linked to).
+- ✅ One front door at `/jd`, standalone and in the shell; the route tree mounts
+  whole, so the match and compare pages stop bouncing to Today. PageHeader on
+  both screens. Frontend on Platform_Core v0.13.0.
+
 ### 2026-10-03 — `seed.py` is safe to run again
 
 - ✅ It gave every row a random id, so each run added the same two JDs again.
