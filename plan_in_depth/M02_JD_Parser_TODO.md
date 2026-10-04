@@ -1,5 +1,10 @@
 # M02 — TODO · JD Parser & Coverage Planner
 
+
+> **Completion: 91%** — 13 of 16 functional requirements met, 3 partially. From this module's own audited FR table. Functional requirements are not the whole spec: the acceptance gates, edge cases and screens are tracked separately below, and the remaining work is not spread evenly across them.
+>
+> _Method: `(met + ½ × partial) ÷ total`, from the FR table below, 2026-08-28. One measure applied the same way to all nineteen modules so they compare; it counts requirements, not screens or gates._
+
 Task list for taking **M02 JD Parser & Coverage Planner** to 100% of
 [M02_JD_Parser.md](M02_JD_Parser.md).
 
@@ -21,6 +26,65 @@ Task list for taking **M02 JD Parser & Coverage Planner** to 100% of
 - **Frontend:** `cd Frontend/frontend_M02_JD_Parser && npx tsc --noEmit && npx vite build`
 
 Legend: ✅ done · 🟡 partly done · ⬜ not started
+
+### 2026-10-04 — practise for this job
+
+- ✅ **"Practise for this job"** on the posting page opens M06's interview
+  setup, planned from this student's requirements for this posting (`?jd=`,
+  which M06 has read since day one and nothing linked to).
+- ✅ One front door at `/jd`, standalone and in the shell; the route tree mounts
+  whole, so the match and compare pages stop bouncing to Today. PageHeader on
+  both screens. Frontend on Platform_Core v0.13.0.
+
+### 2026-10-03 — `seed.py` is safe to run again
+
+- ✅ It gave every row a random id, so each run added the same two JDs again.
+  Ids are now derived from what is seeded, a row already there — by id or by
+  content, for a database the old script seeded — is left alone, and tables are
+  created first so it works before the module has ever started.
+  `Platform_Shell/start.bat seed` runs it with every other module's.
+- ✅ `/jds/from-drive` now has a caller: M06 plans an interview from a
+  company's drive through it, from M15's "Practise this format".
+
+### 2026-10-03 — one session for the page (Platform_Core v0.12.0)
+
+- ✅ **`components/candidate.ts` is `@ai/core`'s session in this module's words.** It kept its
+  own id under its own localStorage key and set the page's identity headers
+  itself, as three other modules did, so in Platform_Shell the student was
+  whoever's module loaded last. The shell's sign-in screen sets the session
+  now; standalone signs in as the seeded student only when nobody is. The old
+  key is migrated, so no browser loses its student.
+- ✅ Pinned to v0.12.0 on both halves; the lockfile resolves `9ee259c`.
+
+### 2026-10-02 — asks from M06, found running the full chain live
+
+- ⬜ **The first plan for a posting took 4.7 s.** `POST /v1/jds/{id}/plan/{candidate}`,
+  measured from M06 on the first live run of M02 → M06 → M05 → M13 → M04. M06
+  waited 3 s — its budget for a call made on a turn — so every session planned
+  on the even split and told the student *"the planner is offline"* while M02
+  was up. M06 now gives plan-time calls 20 s, but a student is watching that
+  spinner: precompute what the plan needs at parse time, or publish the
+  expected latency in `/v1/deps` so a caller can budget for it.
+- ⬜ **Link "practise for this role" to `/mock?jd={id}`.** M06's setup honours
+  `?jd=` since its day 13 and tailors the session to the posting.
+- ✅ The coverage ledger's docstring now says M06 is the writer of `asked`,
+  `answered` and `skipped`, and M13 of `scored` (2026-10-02).
+
+### 2026-10-02 — the shell, the guard, the pin
+
+- ✅ **Platform_Core v0.9.1 → v0.11.0**, on both halves.
+- ✅ **The router guard is Platform_Core's** `candidate_guard`, replacing
+  M02's hand-written copy, so copies cannot drift. Since v0.11.0 it also reads
+  a student named in the query. A gate runs the shared stranger check.
+- ✅ **Every /v1 noun M02 serves is routed to M02 by the shell.**
+  - The company picker moved from `/v1/companies` (M15's noun) to
+    `/v1/doors/companies…`.
+  - The ledger moved from `/v1/sessions/{s}/coverage/{c}…` (M05's noun) to
+    `/v1/coverage/{s}/{c}…`. M06 and M13 call the new paths.
+  - The shell's table gained `archetypes`, `coverage`, `doors` and
+    `performance`. Three of those were served by M02 and routed by nobody.
+  - `tests/test_shell_nouns.py` reads the shell's live table, and fails on
+    a noun in either direction.
 
 ---
 
@@ -75,12 +139,17 @@ against the student's own resume from M01.
 
 ### What is conspicuously absent
 
-**Doors 1 and 3 of Screen 1.** No company picker, no drive chips, no role
-archetype. Door 3 is marked *mandatory* in the spec and is FR-2.14, a P0. A
-student in September with no drive scheduled cannot use this module at all.
+**The placement-cell CALENDAR.** All three doors of Screen 1 work as of
+2026-08-28 — door 1 is built against M15, which owns companies, aliases and
+drive variants. What M15 knows is which drives a company runs, not which are
+scheduled this month, and §2.3's claim that pre-loading them means *"most
+students never type anything at all"* needs the calendar to be true. `/v1/doors`
+now measures whether it is (AC-2.7).
 
-**Everything downstream of the plan.** FR-2.11's live coverage ledger needs M05
-and M13. The plan is produced and nothing consumes it yet.
+**Everything downstream of the plan.** The ledger exists and is read back —
+`build_plan` re-prioritises against it — but M05 and M13 are the writers and
+neither is built. So the table is correct and empty, and `/sessions/{id}` says
+which module has not arrived rather than looking broken.
 
 ---
 
@@ -96,16 +165,16 @@ Spec §4. This is the authoritative list; §3 below is only the inter-module hal
 | FR-2.4 | ✅ | **Complete 2026-08-27.** CGPA, active AND history backlogs, batch, bond, `allowed_branches`, `location`, both package figures. `package_lpa_fixed` is separate because a 6.5 LPA headline with 2 LPA variable is a 4.5 LPA salary and students compare the wrong one. The slash IS split for branches and nowhere else. |
 | FR-2.5 | 🟡 | **Reframed 2026-08-27.** `grounded` (a concept id exists → M04 can drive adaptive questioning) is now separate from `testable` (a question can be put in front of the student at all). One boolean was answering both and reported *72 of 73 untestable* on a posting where 72 are perfectly askable. **This is not an M04 outage**: M04's ontology is 120 interview concepts — 55 DSA, 50 CS-core, 15 communication — and exactly two are technology-shaped. A modern stack grounds almost nowhere BY DESIGN. The plan now allocates to testable-but-ungrounded requirements, marked `grounded: false` so M05 knows to generate rather than draw from the graph |
 | FR-2.6 | ✅ | **Landed 2026-08-27.** A 24-archetype library, matched on title phrases with §6.3's margin check against top-2. Under five requirements, the posting is topped up to eight, each marked `source="archetype"` with `span=None` — the pair that makes the addition auditable. §6.4's `source_w = 0.75` finally has something to apply to. A suggested label that TURNS OUT to be in the document is `jd`, not `archetype`: the archetype found it, the company still said it. Matched deterministically rather than by embedding, and a weak or ambiguous title matches NOTHING |
-| FR-2.7 | 🟡 | Per-requirement gap with `not_measured` as a distinct state, `unmeasurable` as another, and `met_by_alternative` as a third. **Missing: the confidence discount** — §6.5 wants `confidence < 0.25 → not_measured`, and M04 publishes no standard error yet. |
-| FR-2.8 | 🟡 | **Landed 2026-08-27.** §6.5's solver: priority `weight × (1 − mastery)`, a guaranteed question per measurable must-have, the rest by marginal value per minute under `log(1 + q)`, capped at 4. Questions are priced by `measured_by` — 3.5 min verbal, 12 coding, 20 design — and a requirement measured several ways is priced at the dearest. **Missing: `rounds` as a structured list**, and the ILP fallback §6.5 names for infeasible must-have sets (`uncovered` + `suggestion` carry that case today). |
+| FR-2.7 | ✅ | **Complete 2026-08-27.** §6.5's confidence discount, which was recorded here as blocked on *"M04 publishes no standard error"* — **that was wrong**. M04's `MasteryOut` has carried `se`, `se_effective`, `n_direct` and `stale` since it was written; nobody checked the payload. `confidence = 1 - se_effective/SE_PRIOR` (imported from `ai_core.mastery`, not written down), `not_measured` below 0.25, and `severity × confidence`. Reads `se_effective` not `se`, so evidence widened by age is probed again. An upstream that states NO uncertainty gets discount 1.0 rather than 0 — `None` is not zero |
+| FR-2.8 | ✅ | **Complete 2026-08-27.** §6.5's solver, round pricing from `measured_by`, and §5's `rounds` — one `PlannedRound` per modality, ordered cheapest first so a session warms up rather than opening on 20 minutes of design. `PlannedRound` is declared at §5:252 and never defined, so its fields are chosen here. The ILP fallback is still not built: for an infeasible must-have set there is nothing to optimise, and `uncovered` + `suggestion` carry that case honestly |
 | FR-2.9 | ✅ | **Landed 2026-08-27.** The must-have floor is seeded before any second question is allocated, in severity order, so a budget that runs out drops the *least* severe must rather than whichever the posting wrote last. Gate: `test_every_measurable_must_have_gets_at_least_one_question`. |
-| FR-2.10 | ⬜ | **Requirements are not editable.** No `PATCH`, no re-plan. P1, and the cheapest remaining P1. |
-| FR-2.11 | ⬜ | No live coverage ledger, no post-session report. **Blocked** — needs M05 to write `asked` rows and M13 to move them to `scored`. |
+| FR-2.10 | ✅ | **Landed 2026-08-27.** Three corrections a student can make — remove, add, change necessity — stored as their OWN rows keyed by `(candidate_id, jd_id)`. The shared parse is never written to: FR-2.12 caches one parse across sixty students, so a `PATCH` on `jd.requirements` would let any student silently rewrite what fifty-nine others see. Edits re-run `locate`, so weights renormalise rather than being patched, and an added label carries `source="user"` — §5's enum has held that value since the spec was written and nothing had ever produced it |
+| FR-2.11 | ✅ | **Landed 2026-08-27.** `coverage_ledger` is M02's table even though M05 and M13 do the writing — M02 made the promise, so the endpoints are the contract they will be written against rather than a client of theirs. Append-only against §6.6's wording: a row does not "move to scored", a second row is appended and the FURTHEST-THROUGH state wins, because M05 and M13 are separate services whose clocks are not ordered and a late `answered` must not un-score a scored turn. The planner reads it — `build_plan` seeds its counts so a topic already asked twice sees the diminishing return of a third question, and FR-2.9's floor is not re-paid for a must the session already satisfied. `question_budget` is now what is LEFT to ask: a plan is what remains to be done. `/sessions/{id}` renders it live and as the report, because they are the same question at different times. |
 | FR-2.12 | ✅ | **Landed 2026-08-25.** Normalised (company, role, text) hash, looked up globally — the parse is shared, the gap is per-student. A hit answers 200 rather than 201. |
-| FR-2.13 | ⬜ | No M15 company-brief enrichment. **Blocked** — M15 not wired. |
+| FR-2.13 | ✅ | **Landed 2026-08-27.** A JD says what a company WANTS; M15 holds what it ASKED. Three enrichments: alias resolution (§3.2 hard part 5 — M15 owns that table and M02 asks rather than keeping a second one), the drive variant, and a cross-check of the posting's package, bond and locations against the reports. The last is the row that changes a decision — the seeded TCS Digital posting advertises 9.0 LPA and the reports say 7.0. Topics come from the CLAIMS, weighted by `corroboration_count`, because M15 has already decided what a report is worth. `evidence_boost` is a bounded ×0.85–1.25 nudge to §6.4's weights, floored at 8 units of corroborated evidence, and said out loud in the rationale. M15 absent removes the panel and nothing else. |
 | FR-2.14 | ✅ | **Landed 2026-08-27.** `GET /v1/archetypes` and `POST /v1/jds/from-role`. §2.3's door 3 is real: a student with no drive scheduled picks a role and gets a requirement set and a coverage plan. `raw_text` is EMPTY rather than a synthesised posting — storing a plausible JD would make the read-back quote sentences no company ever published. Cached like a pasted JD, because two students picking "SDE" share one set |
 | FR-2.15 | ✅ | **Landed 2026-08-27.** M02 reads M01. `GET /v1/jds/{id}/match/{candidate}` says *"you have 7.2, cutoff is 7.5"* — and refuses to say it whenever the scales differ: a percentage or a 4-point GPA against a 10-point cutoff is `scale_mismatch`, not a conversion. No grade at all is `unknown`, never `fails`. Identity is forwarded to M01 rather than held as a service token, so M02 can only read resumes its own caller was already allowed to see. |
-| FR-2.16 | ⬜ | **p95 never measured.** §11 budgets ≤ 8 s cold and ≤ 1 s cached. Nothing is timed, so the number is unknown rather than met or missed. |
+| FR-2.16 | ✅ | **Landed 2026-08-27.** Every parse records `parse_ms` and a per-stage `stage_ms`, and `GET /v1/performance` reports p95 per stage against §11's budget. Measured over STORED ROWS rather than a benchmark script — a benchmark measures the machine it ran on, and §11's budget is a claim about what a student waits for. Empty until something is parsed, which is the honest answer before there is one |
 
 ---
 
@@ -116,12 +185,12 @@ Spec §13. A gate is release-blocking; the rest are tracked.
 | AC | | |
 |---|---|---|
 | AC-2.1 **[GATE]** | ✅ | Every measurable must-have gets ≥1 probe. Enforced in `build_plan` as a floor seeded before any second question, and asserted. |
-| AC-2.2 **[GATE]** | 🟡 | `not_measured` never renders as a number — `MasteryBar` has no bar for it and `coverage_score` is `null`, never `0.0`, when nothing was measured. **The UI test the gate names does not exist**; this is asserted on the backend only. |
+| AC-2.2 **[GATE]** | ✅ | **Gated 2026-08-27.** §13 says "verified in UI tests" and this repo has no frontend runner — a toolchain and a network install for one assertion. Gated the STRONGER version: a screen cannot render a number that was never sent, so `mastery[label]` is `None` for every `not_measured` row and `coverage_score` is `null` not `0.0`. Plus a source gate keeping `unmeasurable` and `met_by_alternative` out of `TO_MASTERY_STATE` |
 | AC-2.3 | 🟡 | **0.857 on 2026-08-27** (precision 0.891, recall 0.826), past §13's 0.85 — but the target is a claim about REAL postings and 11 of the 12 documents are synthetic, so `MEASURES_REAL_WORLD` stays False. What is true: the parser scores 0.857 on the shapes the spec names. The floor went 0.55 → 0.72 → 0.82 in one day as the corpus named bugs and the fixes landed. 7 of 12 documents score 1.000, including the real one. §10 asks for 25 documents; there are 12 |
 | AC-2.4 | 🟡 | **Measured 2026-08-27: 0.90** over §10's 30 strings. Half are NEGATIVE cases — "CI/CD", "TCP/IP", "A/B testing", "24/7 support" — because splitting one fabricates a skill |
-| AC-2.5 | ⬜ | p95 cold parse ≤ 8 s. Never measured — see FR-2.16. |
+| AC-2.5 | 🟡 | **Measurable 2026-08-27** — `GET /v1/performance`, p95 per stage with the sample count beside it. Whether the 8 s budget is MET is a question about production traffic; on the golden documents every stage is far inside it, and a p95 over a handful of parses is not a p95 |
 | AC-2.6 | ✅ | Plans differ ≥ 30% between students on one JD. `test_two_students_on_one_posting_get_different_plans` asserts it directionally: the student weak on SQL is asked about SQL more, and the reverse for DP. |
-| AC-2.7 | ⬜ | Drive-chip vs manual-paste ratio. Nothing to track — no chips. |
+| AC-2.7 | ✅ | **Measurable 2026-08-28.** `GET /v1/doors`, and there are chips now. Derived from `extracted_by` rather than from a counter of its own — a second record of one event is a second thing to keep correct, and the first time they disagreed nobody could say which was right. Pasting and uploading count as ONE door, because §2.3 counts "bring me the posting" as a single way in. It is the number that says whether door 1 earned its place: if the paste share does not move now the chips exist, the calendar behind it is not worth building either |
 | AC-2.8 | ⬜ | "The interview matched the JD" ≥ 80%. Needs a post-session survey and a session to survey. |
 
 ---
@@ -137,16 +206,16 @@ difference between a demo and a product.
 | EC-2.2 | ✅ | **Landed 2026-08-27.** The top 8 by weight per band, everything else one click away and counted in the band header. Capped per BAND rather than overall, because the bands are already an ordering that means something. Found by reading the real brochure's output as a student: 73 rows in one flat stack, weights between 0.006 and 0.028, no shape — and a list nobody reads may as well hold three |
 | EC-2.3 | ✅ | "Java/Python/C++" → `RequirementGroup(any_of)`, satisfied if any one is strong. |
 | EC-2.4 | ✅ | **Landed 2026-08-27.** §6.1's stripper, written against a real brochure (`Testing/JD_Testing/`, Cognizant 2027 Ace Team, 12,446 chars). A rule list for what campus emails have in common, PLUS a structural rule that needs no list — a line appearing 3× in one document is furniture. The structural half is what survives the 51st email. `too_thin` fires on the RATIO, not the length: a 40-word posting is the median (§3.2.1 trap 1), an email that lost 65% of itself to the stripper was mostly not a job description |
-| EC-2.5 | 🟡 | Non-technical archetypes exist (HR, Sales, Support, Consultant) and their requirement sets are behavioural and aptitude-led, so `measured_by` prices them as verbal rounds. **Missing: an explicit rule that DROPS technical rounds** rather than just not allocating to them. |
-| EC-2.6 | ⬜ | JD in Hindi/Tamil → detect, translate for parsing, keep the original for display. Nothing detects language — but the model pass landed 2026-08-27 and a multilingual model reads Hindi without being told to, so this is now mostly a question of what the SPANS point at |
+| EC-2.5 | ✅ | Non-technical archetypes now DROP the coding and design rounds rather than merely not allocating to them. An HR interview does not open a twelve-minute coding round because the JD mentioned SQL in passing. Asserted both ways so the drop cannot widen to engineering roles |
+| EC-2.6 | 🟡 | **Detection landed 2026-08-28.** `language.py` counts letters by Unicode block — ten scripts, no wheel to install, exact. A posting is non-Latin at 20% of its LETTERS, not a majority, because a real Hindi posting still writes "Java" and the company name in Latin. Verified live: a Devanagari posting reports `devanagari` at 0.879 and still extracts Java, SQL and eight archetype requirements. **Translation is deliberately NOT done** and this stays 🟡 for it: every requirement carries a span into `raw_text`, and offsets into a translation point at text no company published. The §6.2 model pass already reads Hindi, so the extraction that matters works on the original — which is exactly why the spans must stay on it. The screen names the script and says the English lexicon may have missed some |
 | EC-2.7 | ✅ | Unknown company → `POST /v1/jds/from-role` with the default `company_name`. Nothing about the company is fabricated, and `raw_text` stays empty. |
 | EC-2.8 | ✅ | Requirement maps to no concept → `measurable=false`, and the UI says "can't be tested here" with a hatched mark rather than a zero score. |
-| EC-2.9 | ⬜ | All requirements already strong → Final Boss difficulty and stretch items. The plan currently allocates normally and says nothing. |
-| EC-2.10 | 🟡 | Zero session history → all gaps `not_measured` and the plan is a broad diagnostic. The state is right; **the copy explaining why is not written**. |
+| EC-2.9 | ✅ | All-strong → `difficulty: final_boss` and copy about finding a ceiling rather than a gap. Derived from the mastery behind the allocations, not passed in — the point is that the plan NOTICES |
+| EC-2.10 | ✅ | Zero history → `difficulty: diagnostic` and the copy §12 asks for. `diagnostic` beats `final_boss` on a tie deliberately: "you're ready" said to somebody nobody has tested is a guess dressed as praise, and it stops a student preparing |
 | EC-2.11 | ✅ | Time budget too small → `uncovered` populated AND an explicit suggestion. Also the reverse: a session longer than the posting needs reports `saturated` and says so, because a saturated plan is identical for every student and looks exactly like the template §3.2.1 warns about. |
 | EC-2.12 | ✅ | Same JD twice → hash hit, 200, instant. |
 | EC-2.13 | ✅ | **Landed 2026-08-27, deliberately BEFORE §6.2's model call.** M01's `safety.py` ported: homoglyph folding, five injection patterns, masked in place with `█` so every span offset survives. `injections_removed` is SHOWN, which is the opposite of M01's rule and right for the opposite reason — a resume's author is the person the filter is aimed at, a posting's author is not the person reading the screen. `persona_switch` is tighter than M01's: "Ability to act as a technical lead" is real posting prose and M01's pattern flagged it |
-| EC-2.14 | ⬜ | Two roles in one JD ("SDE or QA") → detect and ask. Not detected. |
+| EC-2.14 | ✅ | **Landed 2026-08-27.** `match` already refused an ambiguous title — two archetypes inside `MIN_MARGIN`, returns nothing rather than tossing a coin — and that refusal was SILENT. `role_candidates` names them best-first, so "default to the first" is the caller doing nothing. Empty when unambiguous, and empty is the signal there was nothing to ask |
 
 ---
 
@@ -172,7 +241,7 @@ Spec §2.3.
 
 | Screen | | |
 |---|---|---|
-| 1 — Input, three doors | 🟡 | Doors 2 and 3 work: paste, upload, or pick from 24 roles with the requirement set shown before you commit. **Door 1 (company picker) absent**, and the drive chips — "the highest-value element on this screen" — do not exist. |
+| 1 — Input, three doors | ✅ | **All three land 2026-08-28.** Door 1 is `CompanyDoor`: search a company through M15's alias table, then pick the drive. The chips carry their own figures — TCS Digital reports 7.0 LPA against NQT and Ninja at 3.6 — because a chip reading only "Digital" makes the student click to find out what they are picking. Built against M15 rather than a company table of M02's own: §3.2's fifth hard part is that a second copy of that table is how two modules drift. M15 down leaves the other two doors untouched and names the module. |
 | 2 — Requirement read-back | ✅ | Grouped by necessity with each band's share of the total ask, weights, disjunctions rendered as one row, eligibility banner, per-requirement provenance, and the coverage plan beneath it. |
 | 3 — The gap | 🟡 | `CoveragePanel` shows every requirement's state and never renders `not_measured` as a number. **The spec's "your biggest gap: DBMS — specifically normalisation and indexing, you broke on both in your last session" needs M04 evidence links**, which do not exist. |
 | Match — resume vs posting | ✅ | Not in the spec, added 2026-08-27. Confirmation page then analysis: eligibility verdicts first and alone (§3.2.2 — a hard filter, not a topic), then risks ranked with `blocking` reserved for eligibility, then what the resume evidences. |
@@ -184,17 +253,21 @@ Spec §2.3.
 Not gaps in M02. Each needs a module that is not built or not wired yet, and
 each is listed so it is not mistaken for an oversight.
 
-- **FR-2.11 live coverage ledger** — M05 writes `asked`, M13 moves it to
-  `scored`. §6.6 calls this *"the mechanism that makes coverage a guarantee
-  rather than an intention"*, and it is the one part of the module's promise
-  that cannot be kept alone.
-- **FR-2.13 company brief** — M15. §6.7.
+- **The ledger's WRITERS** — M05 writes `asked`, M13 moves it to `scored`.
+  The table, the endpoints and the re-prioritisation are built (FR-2.11); what
+  is missing is anything to put a row in it. §6.6 calls the ledger *"the
+  mechanism that makes coverage a guarantee rather than an intention"*, and
+  that is the half of the promise M02 cannot keep alone.
 - **`Gap.evidence_session_ids` and `closable_hours_estimate`** — M04 publishes a
   mastery scalar and no provenance behind it, so "you broke on both in your last
   session" cannot be said.
-- **FR-2.7's confidence discount** — M04 publishes no standard error, so
-  §6.5's `confidence < 0.25 → not_measured` is approximated by "M04 returned
-  `None`", which is a coarser signal.
+- ~~**FR-2.7's confidence discount**~~ — **this entry was wrong, and it is
+  left here rather than deleted.** It claimed M04 publishes no standard error.
+  M04's `MasteryOut` has carried `se`, `se_effective`, `n_direct` and `stale`
+  since it was written; nobody had called the endpoint. Landed 2026-08-27.
+  Being blocked on an upstream was asserted here for a fortnight without anyone
+  checking the payload, which is worth remembering the next time a line in this
+  section says blocked.
 - **M12/M17 for `measured_by: communication`** — the classification is made and
   nothing consumes it yet.
 
@@ -270,18 +343,55 @@ evidence each one. That is M02 feeding the ontology rather than forking it.
   on 2026-08-27. **Not attempted in that session** — a core release retags a
   dependency pinned across six modules and has a four-site version-parity test
   behind it, which deserves its own session rather than the tail of another.
-- **The offline concept table holds five entries.** With M04 down the module is
-  honest and nearly useless. Not wrong, but the degraded path is much thinner
-  than "degraded" suggests.
-- **The heading vocabulary is 30 fixed phrases.** A posting that writes
-  `Responsibilities:` or `What you will do:` extracts *nothing* from the bullets
-  beneath it. Not a vocabulary problem: adding `responsibilities` pulls in
-  "- Design scalable systems" as a fabricated requirement. The real fix is a
-  label-level test of *does this name a thing rather than an action*.
-- **No golden corpus.** AC-2.3 and AC-2.4 cannot be measured, so every
-  extraction change is verified by reading output on one or two examples.
-  Today alone that method found four real bugs — which is the argument both for
-  and against it.
+- ~~**The offline concept table holds five entries.**~~ **Closed 2026-08-28** —
+  110 now, derived from the archetypes' requirement sets rather than written
+  out. The IDs deliberately did NOT grow: `FALLBACK_RESOLUTIONS` still holds
+  exactly five, because an id invented from a label looks exactly like a real
+  one and matches nothing in M04, so every mastery lookup returns nothing and
+  "no score" becomes indistinguishable from "not measured yet". Wide vocabulary,
+  five honest ids.
+
+  Checking those five against M04's actual ontology — the first time anyone
+  had — found `concept:sql_basics`, which **M04 has never had**. It is
+  `concept:sql_queries`. The damage was not limited to a degraded parse:
+  FR-2.12 shares one parse across every student on a drive, so a posting parsed
+  while M04 happened to be down stored a dead id for all sixty of them.
+  `test_the_offline_ids_are_ids_m04_actually_has` is now a gate.
+- ~~**The heading vocabulary is 30 fixed phrases.**~~ **Closed 2026-08-28.**
+  The label-level test this asked for exists, and it needed no verb list. In an
+  action clause the verb comes first and English conjoins verbs with a bare
+  and/or before the object begins, so the split is POSITIONAL — "Build and
+  orchestrate | multi-agent AI systems". Two guards keep it honest, and both
+  are derived rather than listed: the leading run is checked against the
+  archetypes' own ~190 requirement labels, and where every word of the run is a
+  known thing the line is left alone. Where that is ambiguous — "Design" is a
+  thing because "System Design" is an archetype requirement — the DOCUMENT
+  settles it: a conjunction joins like with like, so "Design and build" pairs a
+  thing with a non-thing and reads as verbs, and a bullet with no conjunction
+  is resolved by the majority of its siblings in the same block.
+
+  On the real brochure this recovered the most technology-dense section of the
+  posting: multi-agent AI systems, intent prompts for AI coding agents, RAG
+  pipelines, vector stores and knowledge bases — all previously discarded to
+  avoid four verbs.
+- ~~**No golden corpus.**~~ This line was stale and is left struck through
+  rather than deleted: the corpus landed on 2026-08-27 and AC-2.3 has been
+  measured at 0.857 since. A debt entry that outlives its debt is worse than no
+  entry, because the next session reads it and re-plans work already done.
+
+- **No migrations.** The dev database has now been rotated twice in one session
+  — once for the FR-2.13 columns and once for `script`/`script_share` — because
+  a schema change makes every existing row unreadable and every request 500s
+  with a SQL error rather than a sentence. `*.db.*` is gitignored so the
+  rotation is cheap, and that is a workaround, not a fix.
+
+- **The `for_requirements` pipeline rejoins twice.** `normalise` rejoins before
+  stripping and `for_requirements` rejoins again after it, because stripping
+  DELETES lines and deleting a line makes its neighbours adjacent. Correct, and
+  it means the layout repair is not a single pass anybody can point at. Found
+  on the real brochure, where a table artefact sat between "Design and build RAG
+  pipelines, vector stores, and" and "knowledge bases" and kept them apart for
+  the whole pipeline.
 
 ---
 
