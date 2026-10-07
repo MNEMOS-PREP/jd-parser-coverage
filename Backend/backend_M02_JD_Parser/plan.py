@@ -63,8 +63,12 @@ import math
 from pydantic import BaseModel, Field
 
 #: §6.5: "roughly one question per 3.5 minutes for verbal, one per 12 minutes
-#: for coding, one per 20 for design".
-MINUTES_PER_QUESTION = {"verbal": 3.5, "coding": 12.0, "design": 20.0}
+#: for coding, one per 20 for design". Verbal is 2 since 2026-10-07: at 3.5 a
+#: 15-minute interview held three questions and a student asked for five to
+#: seven, which is nearer a campus panel's pace. M06 prices its own rounds at
+#: the same figure (`planner.MINUTES_PER_VERBAL_QUESTION`), so a session
+#: planned from a posting holds as many questions as one planned without.
+MINUTES_PER_QUESTION = {"verbal": 2.0, "coding": 12.0, "design": 20.0}
 
 #: §5's six measurement modes onto the three prices above.
 #:

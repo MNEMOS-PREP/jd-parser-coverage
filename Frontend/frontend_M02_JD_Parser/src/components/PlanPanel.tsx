@@ -261,11 +261,11 @@ export function PlanPanel({
             Without that, the whole session collapses onto the single worst gap.
           </p>
           <p>
-            Questions are priced by what would actually test them: 3.5 minutes
-            for a verbal answer, 12 for a coding one, 20 for design. That is why
-            a session full of DSA holds so much less than it looks like it
-            should &mdash; and why it used to overpromise, when everything here
-            was priced as a three-minute chat.
+            Questions are priced by what would actually test them: 2 minutes
+            for a verbal answer and its follow-ups, 12 for a coding one, 20 for
+            design. That is why a session of coding questions holds so much less
+            than it looks like it should &mdash; and why it used to overpromise,
+            when everything here was priced as a short chat.
           </p>
           <p>
             A requirement nothing can measure gets no questions and is listed

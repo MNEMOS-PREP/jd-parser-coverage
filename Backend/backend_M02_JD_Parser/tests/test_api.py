@@ -1586,9 +1586,9 @@ def test_the_plan_is_a_sequence_of_rounds(client, m04_mastery):
     )
     # Cheapest first, so a session opens on a warm-up rather than on twenty
     # minutes of system design.
-    costs = [
-        {"verbal": 3.5, "coding": 12.0, "design": 20.0}[r["round_type"]] for r in plan["rounds"]
-    ]
+    from backend_M02_JD_Parser.plan import MINUTES_PER_QUESTION
+
+    costs = [MINUTES_PER_QUESTION[r["round_type"]] for r in plan["rounds"]]
     assert costs == sorted(costs)
 
 
