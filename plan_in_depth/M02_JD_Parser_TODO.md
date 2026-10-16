@@ -27,6 +27,16 @@ Task list for taking **M02 JD Parser & Coverage Planner** to 100% of
 
 Legend: ✅ done · 🟡 partly done · ⬜ not started
 
+### 2026-10-08 — a verbal question is priced at 2 minutes
+
+- ✅ **A plan from a posting holds as many questions as one without**
+  (`3588d62`): verbal questions were priced at 3.5 minutes, so a 15-minute
+  interview held three and the student asked for five to seven. M06 prices
+  its own rounds at 2 minutes (`b4ba15c`), and now so does M02; the plan
+  panel's explanation says the new figure.
+- No requirement moves. Counted 2026-10-17 by running the suite: **319
+  passed**, **31** gates.
+
 ### 2026-10-04 — practise for this job
 
 - ✅ **"Practise for this job"** on the posting page opens M06's interview
