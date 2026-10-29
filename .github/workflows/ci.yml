@@ -33,12 +33,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: MNEMOS-PREP/Platform_Shell
+          ref: main  # not the default branch: some repos default to `todo`, the plan
           path: Platform_Shell
       # Beside it: M13's emit.py, the caller of this module's service route.
       # Without it that test skips; with it, a change there that breaks this repo fails here.
       - uses: actions/checkout@v4
         with:
           repository: MNEMOS-PREP/Evaluation_Engine
+          ref: main  # not the default branch: some repos default to `todo`, the plan
           path: Evaluation_Engine
       - uses: actions/setup-python@v5
         with:
