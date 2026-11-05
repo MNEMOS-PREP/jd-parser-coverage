@@ -22,7 +22,7 @@ import uuid
 import pytest
 from backend_M02_JD_Parser import router as router_module
 from backend_M02_JD_Parser.app import app
-from backend_M02_JD_Parser.match import read_grade
+from backend_M02_JD_Parser.match import build_match, read_grade
 from backend_M02_JD_Parser.router import get_db
 from fastapi.testclient import TestClient
 
@@ -400,3 +400,51 @@ def test_alternatives_do_not_inflate_the_denominator(matched, m01):
     report = matched("Backend Engineer\n\nRequirements:\n- Strong Python or Java\n- SQL\n")
 
     assert report["must_have_evidence"] == 1.0
+
+
+def _report(requirements: list[str], **resume) -> dict:
+    """`build_match` alone: the evidence rules are pure and need no M01."""
+    reqs = [
+        {"id": f"r{i}", "text": text, "necessity": "must", "concept_ids": []}
+        for i, text in enumerate(requirements)
+    ]
+    report = build_match(
+        jd_id="jd", candidate_id="c", resume=_resume(**resume), resume_status="ready",
+        eligibility={}, requirements=reqs,
+    )
+    return report.model_dump()
+
+
+def test_a_spaced_slash_choice_is_met_by_either_side():
+    """"React / Angular" in a skills table is a choice, and React answers it.
+
+    Compared as one string it matched nothing on any resume, so a student who
+    lists React, Java and FastAPI read as missing all three (2026-11-05).
+    "CI/CD" has no spaces around its slash and stays one name.
+    """
+    report = _report(["React / Angular", "Streamlit / FastAPI", "CI/CD"],
+                     parsed_skills=["React", "FastAPI", "CI"], resolved_concepts={})
+
+    assert report["evidenced"] == ["React / Angular", "Streamlit / FastAPI"]
+    assert report["unevidenced"] == ["CI/CD"]
+
+
+def test_a_plural_is_the_same_skill():
+    report = _report(["LLMs", "REST APIs"], parsed_skills=["LLM", "REST API"], resolved_concepts={})
+
+    assert report["unevidenced"] == []
+
+
+def test_what_the_resume_says_counts_beyond_its_skills_list():
+    """A recruiter reads the whole resume. "Guardrails" in a project bullet and
+    "AI" in the summary are on it; "Kubernetes" is not, and a two-letter word
+    that is not an acronym is never looked for in prose."""
+    report = _report(
+        ["Guardrails", "multi-agent systems", "AI", "Kubernetes", "Go"],
+        parsed_skills=[],
+        resolved_concepts={},
+        redacted_text="AI engineer. Built multi-agent systems with PII guardrails; go-to person for RAG.",
+    )
+
+    assert report["evidenced"] == ["Guardrails", "multi-agent systems", "AI"]
+    assert report["unevidenced"] == ["Kubernetes", "Go"]

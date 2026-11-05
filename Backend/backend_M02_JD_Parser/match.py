@@ -401,14 +401,26 @@ def build_match(
     #  resume and "React" in a posting are one concept and two strings — and
     #  the label fallback is what keeps unresolved requirements checkable at
     #  all, which is most of them while the ontology holds 120 concepts.
+    #
+    #  A label counts in three ways, checked for the label and for each side of
+    #  a spaced-slash choice ("React / Angular" is met by React): it shares a
+    #  concept, it IS one of the resume's skills (plural or not: "LLMs" and
+    #  "LLM"), or the resume's own text says it. The last is what a recruiter's
+    #  keyword screen reads: "guardrails" in a project bullet is on the resume
+    #  as surely as in the skills list, and reading the list alone told a
+    #  student their resume lacked things it states in plain words.
     resume_concepts = {str(value) for value in (resume.get("resolved_concepts") or {}).values()}
     resume_labels = {
-        _key(label)
+        _match_key(label)
         for label in [
             *(resume.get("parsed_skills") or []),
             *(resume.get("unresolved_skills") or []),
         ]
     }
+    resume_text = resume.get("redacted_text") or ""
+
+    def said(form: str) -> bool:
+        return _match_key(form) in resume_labels or _in_text(form, resume_text)
 
     hits = {
         requirement["text"]: (
@@ -416,7 +428,7 @@ def build_match(
                 {str(concept) for concept in (requirement.get("concept_ids") or [])}
                 & resume_concepts
             )
-            or _key(requirement["text"]) in resume_labels
+            or any(said(form) for form in _forms(requirement["text"]))
         )
         for requirement in requirements
     }
@@ -480,6 +492,43 @@ def build_match(
 
 def _key(label: str) -> str:
     return " ".join(label.lower().split())
+
+
+#: A spaced slash offers a choice: "React / Angular", "AWS / Azure / GCP". An
+#: unspaced one is usually a single name ("CI/CD", "TCP/IP"), so it stays whole.
+_CHOICE = re.compile(r"\s+/\s+")
+
+
+def _forms(label: str) -> list[str]:
+    """The label, then each side of a spaced-slash choice."""
+    sides = [side.strip() for side in _CHOICE.split(label) if side.strip()]
+    return [label, *sides] if len(sides) > 1 else [label]
+
+
+def _match_key(label: str) -> str:
+    """`_key`, hyphens as spaces and a plural last word made singular, so that
+    "LLMs" is "LLM" and "multi-agent" is "multi agent" on both sides."""
+    words = _key(label).replace("-", " ").split()
+    if words and len(words[-1]) > 3 and words[-1].endswith("s") and not words[-1].endswith("ss"):
+        words[-1] = words[-1][:-1]
+    return " ".join(words)
+
+
+def _in_text(form: str, text: str) -> bool:
+    """Whether the resume's text says `form`, as whole words.
+
+    Two letters are too few to find safely ("go" is prose) unless written as an
+    acronym, so "AI" and "ML" are looked for case-sensitively and "Go" not at all.
+    """
+    if not text:
+        return False
+    needle = _match_key(form)
+    if len(needle) < 3:
+        if not (form.isalpha() and form.isupper()):
+            return False
+        return re.search(rf"(?<![A-Za-z0-9]){re.escape(form)}(?![A-Za-z0-9])", text) is not None
+    haystack = " ".join(text.lower().replace("-", " ").split())
+    return re.search(rf"(?<![a-z0-9]){re.escape(needle)}s?(?![a-z0-9])", haystack) is not None
 
 
 #: Ordering for the risk list. `blocking` is eligibility and nothing else.
