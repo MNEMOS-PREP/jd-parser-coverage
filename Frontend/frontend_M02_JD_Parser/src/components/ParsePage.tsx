@@ -33,11 +33,14 @@ import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@ai/core";
 
 import { CompanyDoor } from "./CompanyDoor";
+import { useCandidateId } from "./candidate-hook";
+import { SavedJobs } from "./SavedJobs";
 
 import {
   useArchetypes,
   useParseFromRole,
   useParseJd,
+  useRememberJob,
   useUploadJd,
 } from "../api";
 import {
@@ -60,6 +63,8 @@ Bond: 18 months`;
 
 export function ParsePage() {
   const navigate = useNavigate();
+  const candidateId = useCandidateId();
+  const remember = useRememberJob();
   const parse = useParseJd();
   const upload = useUploadJd();
   const archetypes = useArchetypes();
@@ -92,7 +97,7 @@ export function ParsePage() {
     }
     upload.mutate(
       { company_name: company.trim(), role_title: role.trim(), file },
-      { onSuccess: (jd) => navigate(`/jds/${jd.id}`) },
+      { onSuccess: (jd) => open(jd.id) },
     );
   }
 
@@ -101,8 +106,18 @@ export function ParsePage() {
     if (!canSubmit) return;
     parse.mutate(
       { company_name: company.trim(), role_title: role.trim(), raw_text: text },
-      { onSuccess: (jd) => navigate(`/jds/${jd.id}`) },
+      { onSuccess: (jd) => open(jd.id) },
     );
+  }
+
+  /**
+   * A posting just read is saved for this student at once (2026-11-17), and
+   * opens on tailoring: picking a resume is the next thing to do with it. The
+   * read-back of the requirements is one tab away.
+   */
+  function open(jdId: string) {
+    remember.mutate({ jdId, candidateId });
+    navigate(`/jds/${jdId}/tailor`);
   }
 
   return (
@@ -119,6 +134,9 @@ export function ParsePage() {
           }
         />
       </div>
+
+      {/* A returning student came back for one of these (2026-11-17). */}
+      <SavedJobs />
 
       {/* Door 1. §2.3 calls the drive chips "the highest-value element on
           this screen", and it is first because a student who has a drive on

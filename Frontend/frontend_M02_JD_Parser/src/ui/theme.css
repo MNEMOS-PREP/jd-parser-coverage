@@ -12,6 +12,11 @@
 */
 @import "@ai/core/styles.css";
 
+/* M01's editor, PDF preview and resume list are mounted on the tailoring
+   screen as source from the checkout beside this one (2026-11-17); Tailwind
+   only generates classes for files it is told about. */
+@source "../../../../../resume-ingestion/Frontend/frontend_M01_Resume_Ingestion/src";
+
 /*
   M02 — JD Parser & Coverage Planner · design layer.
 

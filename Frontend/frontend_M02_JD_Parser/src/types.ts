@@ -678,3 +678,194 @@ export interface SessionCoverage {
   }[];
   questions_asked: number;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Saved jobs and resume tailoring (2026-11-17)                      */
+/*  `workspace.py` and `tailoring.py`. Same names as the backend's     */
+/*  models, so `test_contract.py` holds the two halves together.       */
+/* ------------------------------------------------------------------ */
+
+/** One student's work on one posting — the memory this module never had. */
+export interface WorkspaceOut {
+  id: string;
+  candidate_id: string;
+  jd_id: string;
+  /** What the student calls it. Defaults to "Company · Role". */
+  title: string;
+  company_name: string;
+  role_title: string;
+  requirement_count: number;
+  /** The M01 resume chosen for this job. */
+  resume_id: string | null;
+  /** M01 resume id -> the tailored copy of it for this job. */
+  tailored: Record<string, string>;
+  decisions: Record<string, { state: "rejected" | "confirmed"; term?: string; at: string }>;
+  filename: string | null;
+  summary: Partial<{
+    score: number | null;
+    baseline: number | null;
+    musts: number;
+    musts_direct: number;
+    open: number;
+    flags: number;
+    revision: number;
+    resume_id: string | null;
+  }>;
+  created_at: string;
+  updated_at: string;
+  opened_at: string;
+}
+
+export interface WorkspaceIn {
+  title?: string;
+  resume_id?: string;
+  tailored?: Record<string, string>;
+  filename?: string;
+  touch?: boolean;
+}
+
+/** M01's tailored block, as the analysis reads it. */
+export interface TailorBlock {
+  id: string;
+  kind: string;
+  section: string;
+  group: string | null;
+  text: string;
+  original: string;
+  hidden: boolean;
+  added: boolean;
+  masked: boolean;
+}
+
+export interface TailorResume {
+  id: string | null;
+  resolved_concepts: Record<string, string>;
+  canonical_skills: Record<string, string>;
+}
+
+export interface TailorIn {
+  resume: TailorResume;
+  tailored_id: string | null;
+  revision: number;
+  blocks: TailorBlock[];
+  pages: number | null;
+}
+
+/** Where a requirement is evidenced: one line, the words, how strongly. */
+export interface TailorHit {
+  block_id: string;
+  section: string;
+  level: "direct" | "partial";
+  /** named · listed · summary · same_concept */
+  how: "named" | "listed" | "summary" | "same_concept";
+  term: string;
+  start: number;
+  end: number;
+  /** In the resume as uploaded, or only in an edited / added line. */
+  natural: boolean;
+}
+
+export type TailorStatus = "direct" | "partial" | "missing" | "alternative" | "unsupported";
+
+export interface TailorRequirement {
+  id: string;
+  text: string;
+  necessity: string;
+  weight: number;
+  kind: string;
+  status: TailorStatus;
+  met_by: string | null;
+  /** The posting's own words, the line they are on, the heading over it. */
+  quote: string | null;
+  jd_line: string | null;
+  jd_heading: string | null;
+  span: { start: number; end: number; text?: string } | null;
+  /** Not quoted from the posting: listed, never scored. */
+  inferred: boolean;
+  hits: TailorHit[];
+  term: string;
+  choice: string[];
+}
+
+export interface TailorKeyword {
+  term: string;
+  requirement_id: string;
+  state: "natural" | "inserted" | "missing";
+  blocks: string[];
+}
+
+export interface TailorFlag {
+  block_id: string;
+  terms: string[];
+  message: string;
+  confirmed: string[];
+}
+
+export interface TailorReason {
+  what: string;
+  why: string;
+  addresses: string;
+  improves: string;
+  type: "keyword" | "phrasing" | "missing_requirement" | "structure";
+  type_label: string;
+}
+
+export interface TailorSuggestion {
+  key: string;
+  kind: "add_skill" | "use_jd_term" | "surface" | "reword" | "missing" | "reorder" | "trim";
+  category: "skills" | "experience" | "projects" | "keywords" | "structure";
+  priority: number;
+  impact: "high" | "medium" | "low";
+  title: string;
+  requirement_id: string | null;
+  requirement: string | null;
+  jd_line: string | null;
+  /** replace · insert · move · hide · confirm · draft */
+  action: "replace" | "insert" | "move" | "hide" | "confirm" | "draft";
+  block_id: string | null;
+  before: string | null;
+  after: string | null;
+  insert_after: string | null;
+  move_before: string | null;
+  candidates: string[];
+  evidence: string[];
+  needs_confirmation: boolean;
+  reason: TailorReason;
+  state: "open" | "rejected" | "confirmed";
+}
+
+export interface TailorCoverage {
+  /** Requirement weights: 1 shown in work, ½ listed or other words, 0 else. */
+  score: number | null;
+  /** The same count over the resume as uploaded. */
+  baseline: number | null;
+  requirements: number;
+  direct: number;
+  partial: number;
+  missing: number;
+  unsupported: number;
+  musts: number;
+  musts_direct: number;
+  musts_covered: number;
+}
+
+export interface TailorSection {
+  section: string;
+  label: string;
+  direct: string[];
+  partial: string[];
+}
+
+export interface TailorReport {
+  jd_id: string;
+  candidate_id: string;
+  resume_id: string | null;
+  tailored_id: string | null;
+  revision: number;
+  coverage: TailorCoverage;
+  sections: TailorSection[];
+  requirements: TailorRequirement[];
+  keywords: TailorKeyword[];
+  flags: TailorFlag[];
+  suggestions: TailorSuggestion[];
+}

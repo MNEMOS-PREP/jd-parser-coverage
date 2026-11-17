@@ -22,7 +22,7 @@
  * score. `CoveragePanel` owns that.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Icon, PageHeader } from "@ai/core";
@@ -32,10 +32,12 @@ import {
   useEditRequirement,
   useEffectiveRequirements,
   useJd,
+  useRememberJob,
   useResetRequirementEdits,
 } from "../api";
 import { useCandidateId } from "./candidate-hook";
 import { CompanyBriefPanel } from "./CompanyBriefPanel";
+import { JdTabs } from "./JdTabs";
 import { CoveragePanel } from "./CoveragePanel";
 import { PlanPanel } from "./PlanPanel";
 import { ScanSourceNote } from "./ConceptSourceChip";
@@ -65,6 +67,13 @@ export function JdPage() {
   const mine = useEffectiveRequirements(jdId, candidateId);
   const edit = useEditRequirement(jdId, candidateId);
   const resetEdits = useResetRequirementEdits(jdId, candidateId);
+  // A posting opened from any door — a drive, a role, a link — is remembered
+  // for this student, not only one they pasted (2026-11-17).
+  const remember = useRememberJob();
+  const rememberJob = remember.mutate;
+  useEffect(() => {
+    if (jdId && jd.data) rememberJob({ jdId, candidateId });
+  }, [jdId, jd.data, candidateId, rememberJob]);
 
   if (jd.isLoading) return <SkeletonRows rows={6} />;
 
@@ -100,6 +109,9 @@ export function JdPage() {
           practise for it — M06 has read `?jd=` since day one, and nothing
           linked to it. The interview it starts is planned from THIS
           student's requirements, corrections included. */}
+      <div className="mb-6">
+        <JdTabs jdId={data.id} active="posting" />
+      </div>
       <div className="mb-8">
         <PageHeader
           eyebrow={data.company_name}

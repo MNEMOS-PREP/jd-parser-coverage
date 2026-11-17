@@ -26,6 +26,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { useJd, useMatch } from "../api";
 import { useCandidateId } from "./candidate-hook";
+import { JdTabs } from "./JdTabs";
 import {
   Empty,
   ErrorNote,
@@ -102,6 +103,9 @@ export function MatchPage() {
 
   return (
     <>
+      <div className="mb-6">
+        <JdTabs jdId={jd.data.id} active="eligibility" />
+      </div>
       <header className="mb-8">
         <p className="rule-label">
           {jd.data.company_name} &middot; {jd.data.role_title}

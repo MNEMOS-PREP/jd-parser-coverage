@@ -13,6 +13,7 @@ import { MatchConfirmPage } from "./components/MatchConfirmPage";
 import { MatchPage } from "./components/MatchPage";
 import { SessionCoveragePage } from "./components/SessionCoveragePage";
 import { ParsePage } from "./components/ParsePage";
+import { TailorPage } from "./components/TailorPage";
 
 /** Where this module's front door is, standalone and in the shell alike. */
 export const M02_HOME = "/jd";
@@ -33,6 +34,9 @@ export const m02Routes = (
         the right sentence at a moment nobody asked for it. */}
     <Route path="/jds/:jdId/compare" element={<MatchConfirmPage />} />
     <Route path="/jds/:jdId/match" element={<MatchPage />} />
+    {/* 2026-11-17: tailor a resume to this posting — the resume module's
+        editor and PDF, orchestrated with this posting's requirements. */}
+    <Route path="/jds/:jdId/tailor" element={<TailorPage />} />
     {/* FR-2.11. Written by M05 as it asks and M13 as it scores; read here.
         M02 owns the table because M02 made the promise. */}
     <Route path="/sessions/:sessionId" element={<SessionCoveragePage />} />

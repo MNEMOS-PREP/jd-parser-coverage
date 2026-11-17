@@ -22,6 +22,23 @@ spec's extraction stage (§6.2) is where a model arrives, and it has not.
 
 ---
 
+## Tailor a resume to a job (2026-11-17)
+
+Every posting a student reads is **saved for them** — renamable, deletable, and
+listed first on `/jd` — with the resume they chose, a tailored copy of it (held
+by M01, so the uploaded resume is never changed), the suggestions they turned
+down and the file name they want (`workspace.py`).
+
+`/jds/:jdId/tailor` is the workspace: what the posting asks for and what to
+change (this module, `tailoring.py`), the copy line by line and its real PDF
+(M01's components, mounted from `@ai/m01`). Every suggestion carries its reason
+— what changes, why, the posting's own line, what it improves — and never adds
+a fact: a requirement the resume does not show is asked about, not inserted.
+Tags on lines trace a claim onto the PDF beside the posting's words.
+
+Standalone, `@ai/m01` resolves to `../resume-ingestion` (checked out beside
+this repo) and `/v1/resumes` is proxied to M01 on :8101.
+
 ## What is built
 
 A thin spine, and one property held properly.

@@ -17,7 +17,17 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+
+    "types": ["vite/client"],
+    "paths": {
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-router-dom": ["./node_modules/react-router-dom"],
+      "@tanstack/react-query": ["./node_modules/@tanstack/react-query"],
+      "@ai/core": ["./node_modules/@ai/core/src/index.ts"],
+      "@ai/m01": ["../../resume-ingestion/Frontend/frontend_M01_Resume_Ingestion/src/index.ts"]
+    }
   },
   "include": ["frontend_*/src"]
 }

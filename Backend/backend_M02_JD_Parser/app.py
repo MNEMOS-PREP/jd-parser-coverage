@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, create_engine
 
 from backend_M02_JD_Parser.router import router
+from backend_M02_JD_Parser.workspace import router as workspace_router
 
 log = logging.getLogger("uvicorn.error")
 
@@ -34,6 +35,8 @@ app.add_middleware(
 )
 
 app.include_router(router)
+# Saved jobs and resume tailoring (2026-11-17): what each student is working on.
+app.include_router(workspace_router)
 
 
 @app.get("/status", response_model=ModuleStatus, tags=["meta"])
