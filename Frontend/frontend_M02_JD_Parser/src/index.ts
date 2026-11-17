@@ -20,6 +20,8 @@ export {
 // second index route. Standalone still routes to them through m02Routes.
 export { ParsePage } from "./components/ParsePage";
 export { JdPage } from "./components/JdPage";
+export { TailorPage } from "./components/TailorPage";
+export { SavedJobs } from "./components/SavedJobs";
 export { useCoverage, useJd, useParseJd, useDeps } from "./api";
 export type {
   Coverage,

@@ -20,3 +20,20 @@
 /** M01 — Resume Ingestion. Port 5201 per its own `module.json`. */
 export const M01_URL: string =
   import.meta.env.VITE_M01_URL ?? "http://localhost:5201";
+
+/**
+ * Whether this tree is M02's own app on :5202 rather than mounted in the
+ * platform shell (2026-11-17). In the shell, M01's screens are routes of the
+ * same app, so a link to one stays in-app and keeps the student's place.
+ */
+export function standalone(): boolean {
+  return typeof window !== "undefined" && window.location.port === "5202";
+}
+
+/** A path in M01: in-app in the shell, M01's own app when standalone. */
+export function m01Href(path: string, candidateId: string): { href: string; external: boolean } {
+  if (!standalone()) return { href: path, external: false };
+  const url = new URL(path, M01_URL);
+  url.searchParams.set("candidate", candidateId);
+  return { href: url.toString(), external: true };
+}

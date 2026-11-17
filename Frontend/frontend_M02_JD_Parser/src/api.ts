@@ -16,9 +16,9 @@
  * exactly its job.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from "@ai/core";
+import { ApiError, api } from "@ai/core";
 import { identityHeaders } from "./components/candidate";
 import type {
   CompanyBrief,
@@ -39,6 +39,10 @@ import type {
   ModuleStatus,
   SessionCoverage,
   StagePerf,
+  TailorIn,
+  TailorReport,
+  WorkspaceIn,
+  WorkspaceOut,
 } from "./types";
 
 export const m02Keys = {
@@ -480,5 +484,122 @@ export function useRecordCoverage(
       // A plan rebuilt after a turn must not re-ask what was just asked.
       qc.invalidateQueries({ queryKey: ["m02", "plan"] });
     },
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Saved jobs and resume tailoring (2026-11-17)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * This student's saved jobs, the one opened last first.
+ *
+ * The parse is shared across students (FR-2.12); this list is theirs alone —
+ * it is what makes a pasted posting still be there tomorrow.
+ */
+export function useSavedJobs(candidateId: string | undefined) {
+  return useQuery({
+    queryKey: ["m02", "saved", candidateId ?? ""],
+    enabled: Boolean(candidateId),
+    queryFn: () => api.get<WorkspaceOut[]>(`/v1/jds/workspaces/${candidateId}`),
+  });
+}
+
+/** One saved job. `null` when it is not saved yet (a 404 is an answer here). */
+export function useWorkspace(jdId: string | undefined, candidateId: string | undefined) {
+  return useQuery({
+    queryKey: ["m02", "workspace", jdId ?? "", candidateId ?? ""],
+    enabled: Boolean(jdId && candidateId),
+    retry: false,
+    queryFn: async () => {
+      try {
+        return await api.get<WorkspaceOut>(`/v1/jds/${jdId}/workspace/${candidateId}`);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+  });
+}
+
+/** Save a job, or change what is saved about it. Idempotent on the server. */
+export function useSaveWorkspace(jdId: string | undefined, candidateId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: WorkspaceIn) =>
+      api.put<WorkspaceOut>(`/v1/jds/${jdId}/workspace/${candidateId}`, body),
+    onSuccess: (row) => {
+      qc.setQueryData(["m02", "workspace", row.jd_id, row.candidate_id], row);
+      qc.invalidateQueries({ queryKey: ["m02", "saved", row.candidate_id] });
+    },
+  });
+}
+
+/**
+ * Save any job by id — for the moment a posting is read, before a screen for
+ * it exists to hold a `useSaveWorkspace`.
+ */
+export function useRememberJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jdId, candidateId }: { jdId: string; candidateId: string }) =>
+      api.put<WorkspaceOut>(`/v1/jds/${jdId}/workspace/${candidateId}`, { touch: true }),
+    onSuccess: (row) => {
+      qc.setQueryData(["m02", "workspace", row.jd_id, row.candidate_id], row);
+      qc.invalidateQueries({ queryKey: ["m02", "saved", row.candidate_id] });
+    },
+  });
+}
+
+/** Forget a job for this student. The shared parse stays for everyone else. */
+export function useForgetJob(candidateId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (jdId: string) => api.del<void>(`/v1/jds/${jdId}/workspace/${candidateId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["m02", "saved", candidateId ?? ""] });
+      qc.invalidateQueries({ queryKey: ["m02", "workspace"] });
+    },
+  });
+}
+
+/** Turn a suggestion down, say a missing requirement is true of you, or undo. */
+export function useDecide(jdId: string | undefined, candidateId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { key: string; state: "rejected" | "confirmed" | "open"; term?: string }) =>
+      api.post<WorkspaceOut>(`/v1/jds/${jdId}/workspace/${candidateId}/decisions`, body),
+    onSuccess: (row) => {
+      qc.setQueryData(["m02", "workspace", row.jd_id, row.candidate_id], row);
+      qc.invalidateQueries({ queryKey: ["m02", "tailor", row.jd_id] });
+    },
+  });
+}
+
+/**
+ * This posting against the tailored copy at the revision on screen.
+ *
+ * A POST, asked as a query: the body is the copy the student is looking at,
+ * so the key carries its revision and a new revision is a new analysis — the
+ * previous one stays up while the next arrives.
+ */
+export function useTailorReport(
+  jdId: string | undefined,
+  candidateId: string | undefined,
+  body: TailorIn | null,
+) {
+  return useQuery({
+    queryKey: [
+      "m02",
+      "tailor",
+      jdId ?? "",
+      candidateId ?? "",
+      body?.tailored_id ?? "",
+      body?.revision ?? -1,
+      body?.pages ?? 0,
+    ],
+    enabled: Boolean(jdId && candidateId && body),
+    placeholderData: keepPreviousData,
+    queryFn: () => api.post<TailorReport>(`/v1/jds/${jdId}/tailor/${candidateId}`, body),
   });
 }

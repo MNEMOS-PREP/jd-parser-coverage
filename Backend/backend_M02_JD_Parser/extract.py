@@ -832,6 +832,90 @@ def scan_prose(text: str, concepts: list[dict[str, Any]]) -> set[str]:
     return found
 
 
+def prose_surfaces(text: str, concepts: list[dict[str, Any]]) -> dict[str, str]:
+    """Concept name -> the words THIS document used for it (2026-11-17).
+
+    `scan_prose` answers with the concept's NAME, and the router used to add
+    that name as a requirement. When the posting wrote an alias — "AWS",
+    "LLMs", "RAG", "TensorFlow" — the name ("Amazon Web Services", "Large
+    Language Models", "TensorFlow and Keras") is nowhere in the posting, so it
+    was located nowhere: a requirement with no span, claiming to come from the
+    JD, beside a duplicate of itself that did have one. "TensorFlow" itself
+    vanished into "TensorFlow and Keras", so "PyTorch or TensorFlow" could not
+    be read as the choice it is.
+
+    The posting's own spelling is the requirement; the concept id still
+    arrives, because the resolver maps the alias to it. Every requirement this
+    produces is quoted from the document.
+    """
+    found: dict[str, str] = {}
+    haystack = text.lower()
+    for concept in concepts:
+        name = concept.get("name") or ""
+        for candidate in [name, *concept.get("aliases", [])]:
+            if not candidate or not prose_safe_alias(candidate):
+                continue
+            match = re.search(rf"\b{re.escape(candidate.lower())}\b", haystack)
+            if match:
+                written = text[match.start() : match.end()]
+                # The name itself, in another case, is still the name: keep its
+                # spelling. Only an ALIAS is replaced by what the posting wrote.
+                found[name] = name if normalise_alias(written) == normalise_alias(name) else written
+                break
+    return found
+
+
+#: What may stand between two alternatives the posting offered: "or", a
+#: slash, or a comma inside a list that ends in "or".
+_CHOICE_GAP = re.compile(r"\s*(?:,\s*(?:or\s+)?|or|/)\s*", re.IGNORECASE)
+_OR_GAP = re.compile(r"\bor\b|/", re.IGNORECASE)
+
+
+def adjacent_choices(text: str, ordered: list[Requirement]) -> dict[str, list[str]]:
+    """Choices the posting wrote between requirements it names (2026-11-17).
+
+    `find_disjunctions` reads a choice off a COMPOUND label — "AWS or GCP
+    experience" — and finds none when extraction kept only the parts, which is
+    the common case for a short choice inside a sentence: "REST APIs with
+    FastAPI or Flask" gave "FastAPI" and "Flask" and no compound, so a student
+    with FastAPI read as missing Flask, a must-have.
+
+    This reads the choice from the posting itself: requirements next to each
+    other on one line with only "or", "/" or a comma between them, where at
+    least one gap is an "or" or a slash. "Python and SQL" is two demands and
+    stays two; "Java, Python or C++" is one choice of three.
+    """
+    spanned = [r for r in ordered if r.span is not None and r.group_id is None]
+    chains: list[list[Requirement]] = []
+    chain: list[Requirement] = []
+    gaps: list[str] = []
+    for requirement in spanned:
+        if chain:
+            previous = chain[-1]
+            assert previous.span is not None and requirement.span is not None
+            between = text[previous.span.end : requirement.span.start]
+            if (
+                previous.span.end <= requirement.span.start
+                and "\n" not in between
+                and _CHOICE_GAP.fullmatch(between)
+            ):
+                chain.append(requirement)
+                gaps.append(between)
+                continue
+            if len(chain) >= 2 and any(_OR_GAP.search(gap) for gap in gaps):
+                chains.append(chain)
+        chain, gaps = [requirement], []
+    if len(chain) >= 2 and any(_OR_GAP.search(gap) for gap in gaps):
+        chains.append(chain)
+
+    out: dict[str, list[str]] = {}
+    for members in chains:
+        first, last = members[0].span, members[-1].span
+        assert first is not None and last is not None
+        out[text[first.start : last.end]] = [member.text for member in members]
+    return out
+
+
 def _contains_phrase(haystack: str, needle: str) -> bool:
     """Does `needle` appear in `haystack` as whole words?
 
@@ -1410,6 +1494,24 @@ def locate(
     ordered = [requirement for _, requirement in found]
 
     ordered, groups = _fold_disjunctions(text, ordered, disjunctions or {})
+    # Then the choices written between requirements rather than inside one
+    # label ("FastAPI or Flask"), numbered after the ones already folded.
+    implied = adjacent_choices(text, ordered)
+    if implied:
+        ordered, more = _fold_disjunctions(text, ordered, implied)
+        for group in more:
+            groups.append(group.model_copy(update={"id": f"G-{len(groups) + 1}"}))
+        ordered = [
+            requirement.model_copy(
+                update={
+                    "group_id": next(
+                        (g.id for g in groups if requirement.id in g.requirement_ids),
+                        requirement.group_id,
+                    )
+                }
+            )
+            for requirement in ordered
+        ]
 
     # Weights are normalised ACROSS the set, so they cannot be computed until
     # every requirement is known. §6.4: `weight = raw / sum(all_raw)`.

@@ -73,12 +73,13 @@ from backend_M02_JD_Parser.propose import merge, propose
 from backend_M02_JD_Parser.safety import neutralise, normalise_homoglyphs, scan
 
 from .extract import (
+    _contains_phrase,
     drop_redundant,
     extract_eligibility,
     extract_surface_forms,
     find_disjunctions,
     locate,
-    scan_prose,
+    prose_surfaces,
     slash_parts,
 )
 
@@ -262,10 +263,17 @@ def get_candidate_mastery(candidate_id: uuid.UUID) -> dict | None:
 _WHITESPACE = re.compile(r"\s+")
 
 
+#: Which parser made a cached parse. Part of the cache key, so a posting read
+#: by an older parser is read again rather than served with its old mistakes
+#: (2026-11-17: choices written between requirements, aliases in the posting's
+#: own words). Rows made before keep their ids — nothing that cites one breaks.
+PARSE_VERSION = "2026-11-17"
+
+
 def content_digest(company: str, role: str, text: str) -> str:
-    """The cache key for one job description (FR-2.12)."""
+    """The cache key for one job description (FR-2.12), for THIS parser."""
     parts = [_WHITESPACE.sub(" ", value or "").strip() for value in (company, role, text)]
-    return hashlib.sha256("␟".join(parts).encode("utf-8")).hexdigest()
+    return hashlib.sha256("␟".join([*parts, PARSE_VERSION]).encode("utf-8")).hexdigest()
 
 
 class JdParseIn(BaseModel):
@@ -504,16 +512,26 @@ def parse_jd(
         extracted_by = f"lexicon (model: {model_reason})"
 
     # Concepts named in prose rather than enumerated. Ambiguous one-word
-    # aliases are excluded there — that is what closes the "solid" hole.
-    prose_hits = scan_prose(role_block, concepts)
+    # aliases are excluded there — that is what closes the "solid" hole. Added
+    # in the posting's OWN words ("AWS", not "Amazon Web Services"), so every
+    # requirement is quoted from it and an alias never doubles a stated skill.
+    prose_hits = prose_surfaces(role_block, concepts)
 
     labels: list[str] = []
     seen: set[str] = set()
-    for label in [*surface_forms, *sorted(prose_hits)]:
+    for label in surface_forms:
         key = normalise_alias(label)
         if key and key not in seen:
             seen.add(key)
             labels.append(label)
+    # A prose hit already inside a stated label ("RAG" in "RAG pipelines") is
+    # that label again, not a second requirement.
+    for label in sorted(prose_hits.values()):
+        key = normalise_alias(label)
+        if not key or key in seen or any(_contains_phrase(other, key) for other in seen):
+            continue
+        seen.add(key)
+        labels.append(label)
 
     # ------------------------------------------------------------------
     #  Is "Java/Python/C++" three alternatives, or is it "CI/CD"?

@@ -70,14 +70,24 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: Frontend
+        working-directory: jd-parser-coverage/Frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: jd-parser-coverage
+      # Beside it: M01, whose editor, PDF preview and resume list the tailoring
+      # screen mounts as source (2026-11-17). Its packages resolve from this
+      # repo's node_modules (tsconfig paths, Vite dedupe), so no install there.
+      - uses: actions/checkout@v4
+        with:
+          repository: MNEMOS-PREP/resume-ingestion
+          ref: main  # not the default branch: some repos default to `todo`, the plan
+          path: resume-ingestion
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: Frontend/package-lock.json
+          cache-dependency-path: jd-parser-coverage/Frontend/package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - run: npm test --if-present
