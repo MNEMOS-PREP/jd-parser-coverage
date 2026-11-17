@@ -27,6 +27,32 @@ Task list for taking **M02 JD Parser & Coverage Planner** to 100% of
 
 Legend: ✅ done · 🟡 partly done · ⬜ not started
 
+### 2026-11-17 — saved jobs, resume tailoring, a parser that quotes and reads choices
+
+- ✅ **A job is remembered.** A parse is shared across students (FR-2.12), so
+  nothing said which student was working on which posting and a JD lived only
+  in its URL. `workspace.py` (`jd_workspaces`): one row per student and
+  posting — name (renamable), chosen resume, the M01 tailored copy per resume,
+  turned-down suggestions, file name, last match. Saved the moment a posting is
+  read; listed first on `/jd`; deletable (with its M01 copies).
+- ✅ **Tailor a resume to the posting** (`tailoring.py`,
+  `POST /v1/jds/{id}/tailor/{candidate}`): per-line evidence (shown in work ·
+  listed or other words · missing · typed-in-unsupported), a weighted match
+  with the uploaded resume as baseline, section alignment, a coverage matrix,
+  natural / inserted / missing keywords, flags on lines the upload never
+  supported, and ranked suggestions with a reason box (what, why, the posting
+  line, what improves, kind). A missing requirement is asked, never inserted.
+- ✅ **`/jds/:jdId/tailor`** mounts M01's editor, live PDF and resume list from
+  `@ai/m01` (standalone: Vite alias + dedupe + tsconfig paths; CI checks out
+  resume-ingestion beside this repo). Claim tags trace a line onto the PDF with
+  the posting's own words beside it; final check; download under a typed name.
+- ✅ **Parser:** a choice written between requirements ("FastAPI or Flask") is
+  a group (`adjacent_choices`); a concept found by alias is kept in the
+  posting's own words, so every stated requirement has a span and "AWS" is not
+  doubled by "Amazon Web Services" (`prose_surfaces`); `PARSE_VERSION` is in
+  the cache key so old parses are read again.
+- Tests: **346 passed**, **31** gates (`test_tailoring.py`, `test_quoted_choices.py`).
+
 ### 2026-10-08 — a verbal question is priced at 2 minutes
 
 - ✅ **A plan from a posting holds as many questions as one without**
