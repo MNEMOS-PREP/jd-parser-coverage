@@ -456,13 +456,16 @@ _ELIGIBILITY = re.compile(
 #: spelled out here rather than reusing `_BRANCHES` because that table is
 #: defined with the eligibility parser at the bottom of this file, and
 #: `_acceptable` runs long before it.
+#:
+#: One code alone counts too (2026-11-22): "B.Tech in CSE, IT or ECE", split on
+#: its commas, left "CSE", "IT" and "ECE" each as a must-have skill. Codes are
+#: matched in capitals only when alone, so "it" in a sentence is not a branch.
 _BRANCH_RUN = re.compile(
-    r"^(?:CSE|IT|ISE|IS|ECE|EEE|EIE|MECH|CIVIL|AIDS|AIML|CSBS|MCA|BCA)"
-    r"(?:\s*[/,&]\s*|\s+and\s+|\s+or\s+)"
-    r"(?:CSE|IT|ISE|IS|ECE|EEE|EIE|MECH|CIVIL|AIDS|AIML|CSBS|MCA|BCA)"
+    r"^(?:(?:CSE|IT|ISE|IS|ECE|EEE|EIE|MECH|CIVIL|AIDS|AIML|CSBS|MCA|BCA)"
     r"(?:(?:\s*[/,&]\s*|\s+and\s+|\s+or\s+)"
-    r"(?:CSE|IT|ISE|IS|ECE|EEE|EIE|MECH|CIVIL|AIDS|AIML|CSBS|MCA|BCA))*"
-    r"\s*(?:only|branches?|students?)?$",
+    r"(?:CSE|IT|ISE|IS|ECE|EEE|EIE|MECH|CIVIL|AIDS|AIML|CSBS|MCA|BCA))+"
+    r"\s*(?:only|branches?|students?)?$"
+    r"|(?-i:(?:CSE|IT|ISE|ECE|EEE|EIE|MECH|CIVIL|AIDS|AIML|CSBS|MCA|BCA))\s*(?:only|branch|students?)?)$",
     re.IGNORECASE,
 )
 
@@ -755,6 +758,47 @@ def _list_lines(text: str) -> list[str]:
     return out
 
 
+#: A bracketed group: "algorithms (arrays, hashing, trees)".
+_PAREN_GROUP = re.compile(r"\(([^()]*)\)")
+#: Asides a bracket holds that are never a requirement themselves: taken out
+#: of an item, and what is left must still have a word in it ("3.x preferred"
+#: leaves "3.x", which has none; "e.g. Kafka" leaves "Kafka").
+_ASIDE = re.compile(
+    r"(?:\be\.?\s?g\.?|\bi\.?\s?e\.?|\betc\b\.?|\bpreferred\b|\boptional\b|\bmandatory\b|\bmust\b|"
+    r"\brequired\b|\bnice\s+to\s+have\b|\bgood\s+to\s+have\b|\bor\s+similar\b|\bor\s+equivalent\b|"
+    r"\bsuch\s+as\b|\blike\b)",
+    re.IGNORECASE,
+)
+_MASK = "\x00"
+
+
+def _fragments(line: str) -> list[str]:
+    """A list line cut into items, brackets understood (2026-11-22).
+
+    Cut on the delimiters alone, every comma inside "data structures and
+    algorithms (arrays, hashing, trees, graphs)" cut the phrase too, and
+    "algorithms (arrays" reached the screen as a requirement — so did
+    "operating systems (processes", "caching (Redis" and "cloud (AWS". Now a
+    bracket's delimiters are held back while the line is cut, and each item
+    gives its head ("data structures and algorithms") and, separately, each
+    thing listed inside the brackets ("arrays", "hashing", ...). An aside
+    ("e.g.", "preferred") or something with no word in it ("3.x") is dropped.
+    """
+    masked = _PAREN_GROUP.sub(lambda m: "(" + _DELIMITERS.sub(_MASK, m.group(1)) + ")", line)
+    out: list[str] = []
+    for piece in _DELIMITERS.split(masked):
+        inner = [g.replace(_MASK, ",") for g in _PAREN_GROUP.findall(piece)]
+        head = re.sub(r"\s+([:;,.])", r"", " ".join(_PAREN_GROUP.sub(" ", piece).replace(_MASK, ",").split()))
+        if head:
+            out.append(head)
+        for group in inner:
+            for item in _DELIMITERS.split(group):
+                item = " ".join(_ASIDE.sub(" ", item).split()).strip(" :-")
+                if item and re.search(r"[A-Za-z]{2,}", item):
+                    out.append(item)
+    return out
+
+
 def extract_surface_forms(text: str) -> list[str]:
     """Every skill-shaped phrase the document actually contains, in order.
 
@@ -776,7 +820,7 @@ def extract_surface_forms(text: str) -> list[str]:
         forms.append(cleaned)
 
     for line in _list_lines(text):
-        for fragment in _DELIMITERS.split(line):
+        for fragment in _fragments(line):
             cleaned = _clean(fragment)
             if _acceptable(cleaned):
                 add(cleaned)
@@ -1745,7 +1789,11 @@ _BRANCH_CONTEXT = re.compile(
     r"(?:branch(?:es)?|discipline|stream|circuit|eligibility|eligible|"
     r"only\s+for|open\s+to|qualification)"
     r"\s*[:\-]?\s*(?P<list>[A-Za-z&,/ .]{2,120})"
-    r"|(?P<list2>(?:" + _BRANCH_CODES + r")(?:\s*[/,]\s*(?:" + _BRANCH_CODES + r")){1,6})",
+    # "CSE, IT or ECE": the last code after "or"/"and" too (2026-11-22); it
+    # used to stop at "IT" and tell an ECE student they were not eligible.
+    r"|(?P<list2>(?:" + _BRANCH_CODES + r")(?:(?:\s*[/,]\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+)(?:"
+    + _BRANCH_CODES
+    + r")){1,6})",
     re.IGNORECASE,
 )
 

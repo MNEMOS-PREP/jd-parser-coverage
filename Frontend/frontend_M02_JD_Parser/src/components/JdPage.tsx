@@ -665,15 +665,19 @@ function RequirementRow({
           </button>
         )}
         {onEdit && (
+          // "Remove", not "not in the posting": in faint text beside every row
+          // the old label read as the parser's verdict on each requirement,
+          // right next to its quote FROM the posting (good_and_bads #11, 2026-11-22).
           <button
             type="button"
-            title="Remove this from your view of the posting. Nobody else's copy changes."
+            title="Not in the posting? Remove it from your view. Nobody else's copy changes."
+            aria-label={`Remove "${requirement.text}": not in the posting`}
             onClick={() =>
               onEdit({ action: "remove", target: requirement.text })
             }
             className="text-xs text-ink-faint hover:text-contested"
           >
-            not in the posting
+            Remove
           </button>
         )}
         <ConceptPill requirement={requirement} />
