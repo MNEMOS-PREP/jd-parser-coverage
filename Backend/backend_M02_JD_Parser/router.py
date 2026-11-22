@@ -267,7 +267,8 @@ _WHITESPACE = re.compile(r"\s+")
 #: by an older parser is read again rather than served with its old mistakes
 #: (2026-11-17: choices written between requirements, aliases in the posting's
 #: own words). Rows made before keep their ids — nothing that cites one breaks.
-PARSE_VERSION = "2026-11-17"
+#: 2026-11-22: branch codes are eligibility, not skills; bracketed lists are read whole.
+PARSE_VERSION = "2026-11-22"
 
 
 def content_digest(company: str, role: str, text: str) -> str:
